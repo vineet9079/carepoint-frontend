@@ -1,0 +1,15 @@
+{
+  "short_name": "CarePoint",
+  "name": "CarePoint HMS Enterprise",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3063/3063206.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#4F46E5",
+  "background_color": "#F8FAFC"
+}
