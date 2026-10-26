@@ -515,9 +515,11 @@ const handleSendOtp = async (e) => {
       setOtpStep(false);
       setRegisterStep(true);
       toast.success('Email verified! Please set up your profile.');
-    } else {
+   } else {
       toast.success(`Welcome back, ${existingPatient.name}`);
-      onLogin({ ...existingPatient, role: 'patient' });
+      const sessionUser = { ...existingPatient, role: 'patient' };
+      localStorage.setItem('user', JSON.stringify(sessionUser)); // FIX: Save for mobile memory
+      onLogin(sessionUser);
     }
   };
 const handleRegisterPatient = (e) => {
@@ -534,9 +536,10 @@ const handleRegisterPatient = (e) => {
       role: 'patient',
       color: 'bg-indigo-50 text-indigo-700'
     };
-    onRegisterWebPatient(newPatient); 
+onRegisterWebPatient(newPatient); 
     toast.success('Profile created successfully!');
-    onLogin(newPatient);
+    localStorage.setItem('user', JSON.stringify(newPatient)); // FIX: Save for mobile memory
+    onLogin(newPatient);    
   };  
 
   return (
@@ -3096,7 +3099,10 @@ function StaffModule({ staff, onOpenStaffModal, onOpenEditModal, onDeleteStaff }
 // ==========================================
 export default function App() {
 const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
-  const [user, setUser] = useState(null); 
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('user');
+    return saved ? JSON.parse(saved) : null;
+  }); 
   const isOnline = useNetworkStatus(); 
 
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
@@ -3497,8 +3503,11 @@ const handleCompleteApt = (aptId) => {
     pushToCloud(`/staff/${userToDelete.username}`, 'DELETE', {});
   };  
 
-const handleLogout = () => { setUser(null); };
-
+const handleLogout = () => { 
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
+    setUser(null); 
+  };
   const pendingRxCount = prescriptions.filter(rx => rx.status === 'PENDING').length;
   
   // RESTORED: Generates notifications for staff password resets
@@ -3598,17 +3607,19 @@ const endpoints = [
               {user.role !== 'patient' && (
                 <Sidebar user={user} patientCount={patients.length} pendingPrescriptionsCount={pendingRxCount} lowStockCount={inventory.filter(i => i.quantity < 50).length} labReportCount={labReports.length} onOpenSettings={() => setIsSettingsOpen(true)} onOpenHelp={() => setIsHelpOpen(true)} onLogout={handleLogout} />
               )}
-              <div className={`flex-1 flex flex-col relative print:ml-0 ${user.role !== 'patient' ? 'ml-[260px]' : ''}`}>
-		{/* Update Header to pass onOpenCompose */}
-{user.role !== 'patient' && (
-  <Header user={user} onLogout={handleLogout} isOnline={isOnline} notifications={visibleNotifs} onDismissNotification={handleDismissNotification} onOpenCompose={() => setIsMessageModalOpen(true)} />
-)}
+             {/* FIX: Changed ml-[260px] to md:ml-[260px] and added w-full */}
+          <div className={`flex-1 flex flex-col relative w-full print:ml-0 ${user.role !== 'patient' ? 'md:ml-[260px]' : ''}`}>
+            {user.role !== 'patient' && (
+              <Header user={user} onLogout={handleLogout} isOnline={isOnline} notifications={visibleNotifs} onDismissNotification={handleDismissNotification} onOpenCompose={() => setIsMessageModalOpen(true)} />
+            )}
 
-{/* Add the Message Composer Modal globally next to the other Modals */}
-<MessageComposerModal isOpen={isMessageModalOpen} onClose={() => setIsMessageModalOpen(false)} currentUser={user} patients={patients} onSubmit={handleSendNotification} />                
-                <main className={`flex-1 overflow-y-auto print:p-0 ${user.role === 'patient' ? 'p-0 bg-white' : 'p-8'}`}>
-                  <Outlet />
-                </main>
+            {/* Global Message Composer */}
+            <MessageComposerModal isOpen={isMessageModalOpen} onClose={() => setIsMessageModalOpen(false)} currentUser={user} patients={patients} onSubmit={handleSendNotification} />                
+            
+            {/* FIX: Changed p-8 to p-4 md:p-8 for better mobile spacing */}
+            <main className={`flex-1 overflow-y-auto w-full print:p-0 ${user.role === 'patient' ? 'p-0 bg-white' : 'p-4 md:p-8'}`}>
+              <Outlet />
+            </main>
                 {user.role !== 'patient' && (
                   <Chatbot hospitalStats={hospitalStats} userRole={user?.role} />
                 )}
