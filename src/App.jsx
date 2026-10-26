@@ -511,23 +511,35 @@ const handleSendOtp = async (e) => {
       setIsLoading(false);
     }
   };
-  const handleVerifyOtp = (e) => {
+const handleVerifyOtp = async (e) => {
     e.preventDefault();
     if (enteredOtp !== generatedOtp) return toast.error('Invalid OTP. Please try again.');
 
-    // Updated to check both email and phone
-    let existingPatient = patients.find(p => p.email === phone || p.phone === phone);
-    if (!existingPatient) {
-      setOtpStep(false);
-      setRegisterStep(true);
-      toast.success('Email verified! Please set up your profile.');
-   } else {
-      toast.success(`Welcome back, ${existingPatient.name}`);
-      const sessionUser = { ...existingPatient, role: 'patient' };
-      localStorage.setItem('user', JSON.stringify(sessionUser)); // FIX: Save for mobile memory
-      onLogin(sessionUser);
+    try {
+      // Fetch secure token for the patient session
+      const res = await fetch('https://carepoint-services.onrender.com/api/auth/patient-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: phone.trim() })
+      });
+      const data = await res.json();
+      if (data.token) localStorage.setItem('token', data.token);
+
+      let existingPatient = patients.find(p => p.email === phone || p.phone === phone);
+      if (!existingPatient) {
+        setOtpStep(false);
+        setRegisterStep(true);
+        toast.success('Email verified! Please set up your profile.');
+      } else {
+        toast.success(`Welcome back, ${existingPatient.name}`);
+        const sessionUser = { ...existingPatient, role: 'patient' };
+        localStorage.setItem('user', JSON.stringify(sessionUser));
+        onLogin(sessionUser);
+      }
+    } catch (error) {
+      toast.error('Network error while securing session.');
     }
-  };
+  };  
 const handleRegisterPatient = (e) => {
     e.preventDefault();
     const newPatient = {
@@ -3552,7 +3564,6 @@ const handleLogout = () => {
   useEffect(() => {  
     const syncCloudData = async () => {
       if (!isOnline) return; 
-	if (!isOnline || user?.role === 'patient') return;
       const baseUrl = 'https://carepoint-services.onrender.com/api';
 const endpoints = [
         { path: '/patients', setter: setPatients }, { path: '/staff', setter: setStaff, isNested: true },
