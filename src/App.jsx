@@ -3561,17 +3561,37 @@ const handleLogout = () => {
     
   const hospitalStats = { patientCount: patients.length, pendingRx: pendingRxCount, lowStock: inventory.filter(i => i.quantity < 50).length };
 
-  useEffect(() => {  
+  useEffect(() => {
     const syncCloudData = async () => {
-      if (!isOnline) return; 
+      if (!isOnline || !user) return; // FIX: Ensure user state exists
+      
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
       const baseUrl = 'https://carepoint-services.onrender.com/api';
-const endpoints = [
-        { path: '/patients', setter: setPatients }, { path: '/staff', setter: setStaff, isNested: true },
-        { path: '/appointments', setter: setAppointments }, { path: '/prescriptions', setter: setPrescriptions },
-        { path: '/inventory', setter: setInventory }, { path: '/lab-orders', setter: setLabOrders },
-        { path: '/lab-reports', setter: setLabReports }, { path: '/invoices', setter: setInvoices }, // <-- Added comma here
-        { path: '/notifications', setter: setNotifications } 
-      ];    
+      const headers = { 'Authorization': `Bearer ${token}` };
+
+      try {
+        // FIX: Safely fetch only permitted data for patients to prevent the 401 logout loop
+        if (user.role === 'patient') {
+          const [apt, rx, labs, inv, reports] = await Promise.all([
+            fetch(`${baseUrl}/appointments`, { headers }),
+            fetch(`${baseUrl}/prescriptions`, { headers }),
+            fetch(`${baseUrl}/lab-orders`, { headers }),
+            fetch(`${baseUrl}/invoices`, { headers }),
+            fetch(`${baseUrl}/lab-reports`, { headers })
+          ]);
+          
+          if (apt.ok) setAppointments(await apt.json());
+          if (rx.ok) setPrescriptions(await rx.json());
+          if (labs.ok) setLabOrders(await labs.json());
+          if (inv.ok) setInvoices(await inv.json());
+          if (reports.ok) setLabReports(await reports.json());
+          
+          return; // Stop here so it doesn't fetch restricted /api/staff or /api/patients
+        }
+
+        // ... (Your existing staff sync code remains exactly the same below this) ...   
       for (const endpoint of endpoints) {
         try {
           const token = localStorage.getItem('token');
