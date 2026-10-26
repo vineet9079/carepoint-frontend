@@ -3561,9 +3561,9 @@ const handleLogout = () => {
     
   const hospitalStats = { patientCount: patients.length, pendingRx: pendingRxCount, lowStock: inventory.filter(i => i.quantity < 50).length };
 
-  useEffect(() => {
+useEffect(() => {
     const syncCloudData = async () => {
-      if (!isOnline || !user) return; // FIX: Ensure user state exists
+      if (!isOnline || !user) return;
       
       const token = localStorage.getItem('token');
       if (!token) return;
@@ -3572,7 +3572,7 @@ const handleLogout = () => {
       const headers = { 'Authorization': `Bearer ${token}` };
 
       try {
-        // FIX: Safely fetch only permitted data for patients to prevent the 401 logout loop
+        // Patient-only sync to prevent 401 errors
         if (user.role === 'patient') {
           const [apt, rx, labs, inv, reports] = await Promise.all([
             fetch(`${baseUrl}/appointments`, { headers }),
@@ -3588,50 +3588,37 @@ const handleLogout = () => {
           if (inv.ok) setInvoices(await inv.json());
           if (reports.ok) setLabReports(await reports.json());
           
-          return; // Stop here so it doesn't fetch restricted /api/staff or /api/patients
+          return; // Exits before hitting staff-only endpoints
         }
 
-        // ... (Your existing staff sync code remains exactly the same below this) ...   
-      for (const endpoint of endpoints) {
-        try {
-          const token = localStorage.getItem('token');
-          const res = await fetch(baseUrl + endpoint.path, { headers: { 'Authorization': `Bearer ${token}` }});
-          if (res.status === 401) { localStorage.removeItem('token'); setUser(null); return; }
-          if (res.ok) {
-            const data = await res.json();      
-            const fetchedData = endpoint.isNested ? data.staff : (data.data || data.patients || data);
-            if (Array.isArray(fetchedData)) {
-              endpoint.setter(prev => {
-                const localItems = Array.isArray(prev) ? prev : [];
-                const safeFetchedData = fetchedData.filter(item => !deletedItems.includes(endpoint.path === '/staff' ? item.username : item.id));
-                const cloudIds = new Set(safeFetchedData.map(item => endpoint.path === '/staff' ? item.username : item.id));
-                
-                localItems.forEach(localItem => {
-                  const localId = endpoint.path === '/staff' ? localItem.username : localItem.id;
-                  if (localId && !cloudIds.has(localId) && !deletedItems.includes(localId)) {
-                    fetch(baseUrl + endpoint.path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(localItem) }).catch(()=>{});
-                  }
-                });
+        // Staff sync (fetches all data including staff and patients)
+        const [apt, rx, labs, inv, reports, staffRes, patRes] = await Promise.all([
+          fetch(`${baseUrl}/appointments`, { headers }),
+          fetch(`${baseUrl}/prescriptions`, { headers }),
+          fetch(`${baseUrl}/lab-orders`, { headers }),
+          fetch(`${baseUrl}/invoices`, { headers }),
+          fetch(`${baseUrl}/lab-reports`, { headers }),
+          fetch(`${baseUrl}/staff`, { headers }),
+          fetch(`${baseUrl}/patients`, { headers })
+        ]);
 
-                const map = new Map();
-                [...safeFetchedData, ...localItems].forEach(item => {
-                  if (item) {
-                    const uniqueKey = endpoint.path === '/staff' ? item.username : item.id;
-                    if (uniqueKey && !map.has(uniqueKey) && !deletedItems.includes(uniqueKey)) map.set(uniqueKey, item);
-                  }
-                });
-                return Array.from(map.values());
-              });
-            }
-          }
-        } catch (err) {}
+        if (apt.ok) setAppointments(await apt.json());
+        if (rx.ok) setPrescriptions(await rx.json());
+        if (labs.ok) setLabOrders(await labs.json());
+        if (inv.ok) setInvoices(await inv.json());
+        if (reports.ok) setLabReports(await reports.json());
+        if (staffRes.ok) setStaff(await staffRes.json());
+        if (patRes.ok) setPatients(await patRes.json());
+        
+      } catch (error) {
+        console.error("Sync error:", error);
       }
     };
-    syncCloudData();
-    const interval = setInterval(syncCloudData, 10000); 
-    return () => clearInterval(interval);
-  }, [isOnline, user, deletedItems]);   
 
+    syncCloudData();
+    const interval = setInterval(syncCloudData, 10000);
+    return () => clearInterval(interval);
+  }, [isOnline, user]);   
   return (
     <Router>
       <Toaster position="top-right" />
