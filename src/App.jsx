@@ -42,6 +42,12 @@ const getLandingPath = (role) => {
 
 const RoleGuard = ({ user, allowedRoles, children }) => {
   if (!user) return <Navigate to="/login" replace />;
+  
+  // FIX: Prevent Staff/Admin from forcing their way into the Patient Portal (stops the overlapping UI glitch)
+  if (allowedRoles.includes('patient') && user.role.toLowerCase() !== 'patient') {
+    return <Navigate to={getLandingPath(user.role)} replace />;
+  }
+  
   if (user.role.toLowerCase() === 'admin' || allowedRoles.includes(user.role.toLowerCase())) return children;
   return <Navigate to={getLandingPath(user.role)} replace />;
 };
@@ -3546,6 +3552,7 @@ const handleLogout = () => {
   useEffect(() => {  
     const syncCloudData = async () => {
       if (!isOnline) return; 
+	if (!isOnline || user?.role === 'patient') return;
       const baseUrl = 'https://carepoint-services.onrender.com/api';
 const endpoints = [
         { path: '/patients', setter: setPatients }, { path: '/staff', setter: setStaff, isNested: true },
@@ -3601,17 +3608,19 @@ const endpoints = [
         <Route path="/" element={<Navigate to={user ? getLandingPath(user.role) : '/login'} replace />} />
         <Route path="/login" element={user ? <Navigate to={getLandingPath(user.role)} replace /> : <LoginScreen onLogin={setUser} staff={staff} patients={patients} onRegisterWebPatient={handleAddPatient} />} />        
         
-        <Route element={
+       <Route element={
           user ? (
             <div className="min-h-screen bg-[#F8FAFC] flex font-sans">
               {user.role !== 'patient' && (
-                <Sidebar user={user} patientCount={patients.length} pendingPrescriptionsCount={pendingRxCount} lowStockCount={inventory.filter(i => i.quantity < 50).length} labReportCount={labReports.length} onOpenSettings={() => setIsSettingsOpen(true)} onOpenHelp={() => setIsHelpOpen(true)} onLogout={handleLogout} />
+                <div className="hidden md:block"> {/* FIX: Hides sidebar on mobile screens */}
+                  <Sidebar user={user} patientCount={patients.length} pendingPrescriptionsCount={pendingRxCount} lowStockCount={inventory.filter(i => i.quantity < 50).length} labReportCount={labReports.length} onOpenSettings={() => setIsSettingsOpen(true)} onOpenHelp={() => setIsHelpOpen(true)} onLogout={handleLogout} />
+                </div>
               )}
-             {/* FIX: Changed ml-[260px] to md:ml-[260px] and added w-full */}
-          <div className={`flex-1 flex flex-col relative w-full print:ml-0 ${user.role !== 'patient' ? 'md:ml-[260px]' : ''}`}>
-            {user.role !== 'patient' && (
-              <Header user={user} onLogout={handleLogout} isOnline={isOnline} notifications={visibleNotifs} onDismissNotification={handleDismissNotification} onOpenCompose={() => setIsMessageModalOpen(true)} />
-            )}
+              {/* FIX: Responsive width and margins for mobile staff portal */}
+              <div className={`flex-1 flex flex-col relative w-full print:ml-0 ${user.role !== 'patient' ? 'md:ml-[260px]' : ''}`}>
+                {user.role !== 'patient' && (
+                  <Header user={user} onLogout={handleLogout} isOnline={isOnline} notifications={visibleNotifs} onDismissNotification={handleDismissNotification} onOpenCompose={() => setIsMessageModalOpen(true)} />
+                )}
 
             {/* Global Message Composer */}
             <MessageComposerModal isOpen={isMessageModalOpen} onClose={() => setIsMessageModalOpen(false)} currentUser={user} patients={patients} onSubmit={handleSendNotification} />                
