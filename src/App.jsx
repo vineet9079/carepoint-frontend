@@ -3350,10 +3350,31 @@ const sendSmartNotification = (patientId, type, refId) => {
     pushToCloud(`/appointments/${aptId}`, 'PUT', updatedApt);
   };
 
-  const handleUpdateAppointment = (updatedApt) => {
-    if (updatedApt.status === 'Pending Approval' || updatedApt.status === 'Awaiting Patient Confirmation') {
+ const handleUpdateAppointment = (updatedApt) => {
+    // 1. Check if the receptionist actually changed the time, date, or doctor
+    const oldApt = appointments.find(a => a.id === updatedApt.id);
+    const isRescheduled = oldApt && (oldApt.date !== updatedApt.date || oldApt.time !== updatedApt.time || oldApt.doctorId !== updatedApt.doctorId);
+
+    if (isRescheduled) {
+      // 2. Force the status back to negotiation mode
+      updatedApt.status = 'Awaiting Patient Confirmation';
+      
+      // 3. Send a direct notification to the patient's portal
+      const newNotif = {
+        id: `msg-${Date.now()}`,
+        title: 'Appointment Rescheduled',
+        message: `Your appointment was updated to ${updatedApt.date} at ${updatedApt.time} with ${updatedApt.doctorName}. Please review and accept the new time.`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        recipient: updatedApt.patientId,
+        sender: { name: 'Reception Desk', role: 'Admin' }
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+      pushToCloud('/notifications', 'POST', newNotif);
+    } else if (updatedApt.status === 'Pending Approval') {
       updatedApt.status = 'Awaiting Patient Confirmation';
     }
+
+    // 4. Save updates to local state and cloud database
     setAppointments(prev => prev.map(a => a.id === updatedApt.id ? updatedApt : a));
     pushToCloud(`/appointments/${updatedApt.id}`, 'PUT', updatedApt);
     setEditingApt(null);
