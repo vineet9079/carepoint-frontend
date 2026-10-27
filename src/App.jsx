@@ -3193,9 +3193,10 @@ const handleSendNotification = (recipient, message, senderInfo) => {
     } catch (err) {}
   };
 
- const getDynamicStatus = useCallback((apt) => {
+const getDynamicStatus = useCallback((apt) => {
     const { patientId, status: currentStatus, date: aptDate } = apt;
     
+    // Explicit manual completion checks
     if (currentStatus === 'Completed') return { text: 'Completed', color: 'bg-emerald-50 text-emerald-600 border border-emerald-100' };
     if (currentStatus === 'Pending Approval') return { text: 'Pending Approval', color: 'bg-amber-50 text-amber-700 border border-amber-200' };
     if (currentStatus === 'Awaiting Patient Confirmation') return { text: 'Waiting on Patient', color: 'bg-blue-50 text-blue-700 border border-blue-200' };
@@ -3211,11 +3212,13 @@ const handleSendNotification = (recipient, message, senderInfo) => {
     const todayStr = getLocalDateStr();
     const targetDate = aptDate || todayStr;
 
+    // Checks if the database says it's paid OR if a consultation invoice exists for this patient (ignoring the invoice date)
     const isPaid = 
       currentStatus === 'Scheduled (Paid)' || 
       currentStatus === 'Waiting for Doctor' ||
-      invoices.some(i => i.patientId === patientId && i.status === 'PAID' && i.date && i.date.includes(targetDate) && i.services && i.services.includes('Consultation Fee'));
+      invoices.some(i => i.patientId === patientId && i.status === 'PAID' && i.services && i.services.includes('Consultation Fee'));
 
+    // Force the correct status strictly based on today's date
     if (isPaid) {
       if (targetDate === todayStr) {
         return { text: 'Waiting for Doctor', color: 'bg-indigo-50 text-indigo-600 border border-indigo-100' };
