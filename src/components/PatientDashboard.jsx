@@ -8,7 +8,7 @@ export default function PatientDashboard({
   labTestPrices = {}, staff = [], onBookAppointment, onClearDues, onPayOnline, 
   onPrintInvoice, onPrintLab, onPrintRx, 
   onLogout, onConfirmApt, onRescheduleApt, onSendMessage,
-  notifications = [], onDismissNotification, onCompleteApt // <-- NEW PROP
+  notifications = [], onDismissNotification, onCompleteApt, getDynamicStatus // <-- Add this here
 }) {
   // ... rest of your code
   // --- WHATSAPP REDIRECT ENGINE ---
@@ -295,18 +295,18 @@ const [showNotifs, setShowNotifs] = useState(false);
                   <p className="text-gray-500 text-sm font-medium">No active appointments scheduled.</p>
                 </div>
               ) : (
-                activeAppointments.map(apt => (
+			activeAppointments.map(apt => {
+                  const statusInfo = getDynamicStatus ? getDynamicStatus(apt) : { text: apt.status, color: 'bg-blue-50 text-blue-600' };
+                  
+                  return (
                   <div key={apt.id} className="bg-white border border-gray-200 rounded-2xl p-6 mb-4 shadow-sm transition hover:shadow-md">
                     <div className="flex justify-between items-start mb-4 border-b border-gray-100 pb-4">
                       <div>
                         <p className="font-bold text-gray-900 text-xl">{apt.date}</p>
                         <p className="text-indigo-600 font-bold text-lg">{apt.time}</p>
                       </div>
-                      <span className={`text-[10px] md:text-xs font-bold px-3 py-1.5 rounded-md ${
-                        apt.status === 'Scheduled' ? 'bg-emerald-50 text-emerald-600' :
-                        apt.status === 'Pending Approval' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'
-                      }`}>
-                        {apt.status}
+                      <span className={`text-[10px] md:text-xs font-bold px-3 py-1.5 rounded-md ${statusInfo.color}`}>
+                        {statusInfo.text}
                       </span>
                     </div>
                     
@@ -319,8 +319,7 @@ const [showNotifs, setShowNotifs] = useState(false);
                     </div>
 
                     {/* Receptionist Negotiation Actions */}
-{/* Receptionist Negotiation Actions */}
-                    {apt.status === 'Awaiting Patient Confirmation' && (
+                    {statusInfo.text === 'Waiting on Patient' && (
                       <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 mt-2">
                         <p className="text-xs md:text-sm font-bold text-blue-800 mb-3">Receptionist suggested this time. Do you accept?</p>
                         <div className="flex gap-2">
@@ -335,9 +334,9 @@ const [showNotifs, setShowNotifs] = useState(false);
                           </button>
                         </div>
                       </div>
-                    )}
-{/* NEW: Patient Mark Complete Button */}
-                    {apt.status === 'Scheduled' && (
+                    )}                
+{/* Patient Mark Complete Button */}
+                    {statusInfo.text === 'Waiting for Doctor' && (
                       <div className="mt-4 pt-4 border-t border-gray-100">
                         <button 
                           onClick={() => {
@@ -358,12 +357,7 @@ const [showNotifs, setShowNotifs] = useState(false);
                       </div>
                     )}
                   </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-        
+                )})        
         {/* ========================================= */}
         {/* TAB 2: MEDICAL HISTORY (GRID ON DESKTOP)  */}
 {/* ========================================= */}
