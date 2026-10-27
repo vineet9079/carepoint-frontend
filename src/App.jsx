@@ -3326,7 +3326,8 @@ const sendSmartNotification = (patientId, type, refId) => {
 const handleBookAppointment = (newAppointment, isWebPaid = false) => { 
     const finalAppointment = { 
       ...newAppointment, 
-      status: isWebPaid ? 'Scheduled (Paid)' : 'Scheduled' 
+      // FIX: Revert to 'Pending Approval' for web bookings so receptionist can confirm
+      status: isWebPaid ? 'Pending Approval' : 'Scheduled' 
     };
     setAppointments(prev => [...prev, finalAppointment]); 
     setIsBookingModalOpen(false); 
@@ -3609,15 +3610,16 @@ useEffect(() => {
       const headers = { 'Authorization': `Bearer ${token}` };
 
       try {
-       // Patient-only sync
+      // Patient-only sync
         if (user.role === 'patient') {
-          const [apt, rx, labs, inv, reports, staffRes] = await Promise.all([
+          const [apt, rx, labs, inv, reports, staffRes, notifRes] = await Promise.all([
             fetch(`${baseUrl}/appointments`, { headers }),
             fetch(`${baseUrl}/prescriptions`, { headers }),
             fetch(`${baseUrl}/lab-orders`, { headers }),
             fetch(`${baseUrl}/invoices`, { headers }),
             fetch(`${baseUrl}/lab-reports`, { headers }),
-            fetch(`${baseUrl}/staff`, { headers }) // FIX: Fetch staff to populate the doctor dropdown
+            fetch(`${baseUrl}/staff`, { headers }),
+            fetch(`${baseUrl}/notifications`, { headers }) // <-- ADD THIS
           ]);
           
           if (apt.ok) setAppointments(await apt.json());
@@ -3625,20 +3627,22 @@ useEffect(() => {
           if (labs.ok) setLabOrders(await labs.json());
           if (inv.ok) setInvoices(await inv.json());
           if (reports.ok) setLabReports(await reports.json());
-          if (staffRes.ok) setStaff(await staffRes.json()); // FIX: Save staff to local state
+          if (staffRes.ok) setStaff(await staffRes.json());
+          if (notifRes && notifRes.ok) setNotifications(await notifRes.json()); // <-- ADD THIS
           
-          return; // Exits before hitting the restricted /api/patients endpoint
+          return;
         }
 
-        // Staff sync (fetches all data including staff and patients)
-        const [apt, rx, labs, inv, reports, staffRes, patRes] = await Promise.all([
+        // Staff sync
+        const [apt, rx, labs, inv, reports, staffRes, patRes, notifRes] = await Promise.all([
           fetch(`${baseUrl}/appointments`, { headers }),
           fetch(`${baseUrl}/prescriptions`, { headers }),
           fetch(`${baseUrl}/lab-orders`, { headers }),
           fetch(`${baseUrl}/invoices`, { headers }),
           fetch(`${baseUrl}/lab-reports`, { headers }),
           fetch(`${baseUrl}/staff`, { headers }),
-          fetch(`${baseUrl}/patients`, { headers })
+          fetch(`${baseUrl}/patients`, { headers }),
+          fetch(`${baseUrl}/notifications`, { headers }) // <-- ADD THIS
         ]);
 
         if (apt.ok) setAppointments(await apt.json());
@@ -3648,11 +3652,7 @@ useEffect(() => {
         if (reports.ok) setLabReports(await reports.json());
         if (staffRes.ok) setStaff(await staffRes.json());
         if (patRes.ok) setPatients(await patRes.json());
-        
-      } catch (error) {
-        console.error("Sync error:", error);
-      }
-    };
+        if (notifRes && notifRes.ok) setNotifications(await notifRes.json()); // <-- ADD THIS
 
     syncCloudData();
     const interval = setInterval(syncCloudData, 10000);
