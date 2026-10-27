@@ -151,22 +151,14 @@ const PrintInvoice = ({ invoice, onClose }) => {
       <table className="w-full text-left border-collapse mb-8">
         <thead>
           <tr className="border-b-2 border-gray-900 text-xs font-bold text-gray-900 uppercase tracking-wider">
-            <th className="py-3">Description</th>
+            <th className="py-3">Description of Services</th>
             <th className="py-3 text-right">Amount</th>
           </tr>
         </thead>
         <tbody className="text-sm border-b border-gray-200">
           <tr className="border-b border-gray-100">
-            <td className="py-4 text-gray-700">Doctor Consultation Fee</td>
-            <td className="py-4 text-right font-medium">₹{Number(invoice?.consultationFee || 0).toLocaleString('en-IN')}</td>
-          </tr>
-          <tr className="border-b border-gray-100">
-            <td className="py-4 text-gray-700">Pharmacy / Medicines Dispensed</td>
-            <td className="py-4 text-right font-medium">₹{Number(invoice?.pharmacyTotal || 0).toLocaleString('en-IN')}</td>
-          </tr>
-          <tr className="border-b border-gray-100">
-            <td className="py-4 text-gray-700">Laboratory & Diagnostic Tests</td>
-            <td className="py-4 text-right font-medium">₹{Number(invoice?.labTotal || 0).toLocaleString('en-IN')}</td>
+            <td className="py-4 text-gray-700">{invoice?.services || 'Medical Services'}</td>
+            <td className="py-4 text-right font-medium">₹{Number(invoice?.subtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
           </tr>
         </tbody>
       </table>
@@ -1964,10 +1956,15 @@ const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount,
             <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md uppercase">Real-time</span>
           </div>
           <div className="flex-1 overflow-y-auto p-2">
-            {appointments.length === 0 ? (
-              <p className="text-center text-gray-400 text-sm mt-20">No active patients in the system today.</p>
-            ) : (
-              appointments.map(apt => {
+            {(() => {
+              const todayStr = getLocalDateStr();
+              const activeQueue = appointments.filter(apt => apt.status !== 'Completed' && (!apt.date || apt.date.startsWith(todayStr)));
+              
+              if (activeQueue.length === 0) {
+                return <p className="text-center text-gray-400 text-sm mt-20">No active patients in the system today.</p>;
+              }
+
+              return activeQueue.map(apt => {
                 const pId = apt.patientId;
                 const hasPendingInv = invoices.some(i => i.patientId === pId && i.status === 'PENDING');
                 const hasPendingRx = prescriptions.some(r => r.patientId === pId && r.status === 'PENDING');
@@ -1998,8 +1995,8 @@ const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount,
                     </div>
                   </div>
                 )
-              })
-            )}
+              });
+            })()}
           </div>
         </div>
       </div>
@@ -2068,7 +2065,7 @@ const PatientsDirectory = ({ user, patients, appointments, onOpenModal, onViewPa
                     <td className="px-6 py-4 font-bold text-gray-900">{p.id}</td>
                     <td className="px-6 py-4">
                       <p className="font-bold text-gray-900 capitalize">{p.name}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{p.gender} • {p.dob || 'DOB N/A'} • {p.bloodGroup || 'Blood: N/A'}</p>
+                     <p className="text-xs text-gray-500 mt-0.5">{p.gender} • {p.dob ? p.dob.split('T')[0] : 'DOB N/A'} • {p.bloodGroup || 'Blood: N/A'}</p>
                     </td>
                     <td className="px-6 py-4 text-gray-600">{p.phone || 'N/A'}</td>
                     <td className="px-6 py-4 text-right">
