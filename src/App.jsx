@@ -516,7 +516,7 @@ const handleVerifyOtp = async (e) => {
     if (enteredOtp !== generatedOtp) return toast.error('Invalid OTP. Please try again.');
 
     try {
-      // Fetch secure token for the patient session
+      // Fetch secure token and profile from the cloud database
       const res = await fetch('https://carepoint-services.onrender.com/api/auth/patient-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -525,21 +525,21 @@ const handleVerifyOtp = async (e) => {
       const data = await res.json();
       if (data.token) localStorage.setItem('token', data.token);
 
-      let existingPatient = patients.find(p => p.email === phone || p.phone === phone);
-      if (!existingPatient) {
+      // FIX: Rely on the cloud database (data.patient) instead of the empty local array
+      if (!data.patient) {
         setOtpStep(false);
         setRegisterStep(true);
         toast.success('Email verified! Please set up your profile.');
       } else {
-        toast.success(`Welcome back, ${existingPatient.name}`);
-        const sessionUser = { ...existingPatient, role: 'patient' };
+        toast.success(`Welcome back, ${data.patient.name}`);
+        const sessionUser = { ...data.patient, role: 'patient' };
         localStorage.setItem('user', JSON.stringify(sessionUser));
         onLogin(sessionUser);
       }
     } catch (error) {
       toast.error('Network error while securing session.');
     }
-  };  
+  };
 const handleRegisterPatient = (e) => {
     e.preventDefault();
     const newPatient = {
@@ -548,18 +548,17 @@ const handleRegisterPatient = (e) => {
       inits: `${regForm.firstName.charAt(0)}${regForm.lastName.charAt(0)}`.toUpperCase(),
       dob: regForm.dob,
       gender: regForm.gender,
-      phone: regForm.mobile, // Saves the newly entered mobile number
-      email: phone,          // Saves the email they used to log in
-      bloodGroup: 'Not specified',
+      phone: regForm.mobile, 
+      email: phone,          
+      bloodGroup: 'Unknown', // FIX: Changed from 'Not specified' to fit VARCHAR(10) database limit
       role: 'patient',
       color: 'bg-indigo-50 text-indigo-700'
     };
-onRegisterWebPatient(newPatient); 
+    onRegisterWebPatient(newPatient); 
     toast.success('Profile created successfully!');
-    localStorage.setItem('user', JSON.stringify(newPatient)); // FIX: Save for mobile memory
+    localStorage.setItem('user', JSON.stringify(newPatient)); 
     onLogin(newPatient);    
-  };  
-
+  };
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 relative overflow-hidden">
       <div className="w-full max-w-[420px] bg-white rounded-[24px] shadow-2xl relative z-10 overflow-hidden border border-gray-100">
