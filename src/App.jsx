@@ -3649,10 +3649,15 @@ useEffect(() => {
         if (rx.ok) setPrescriptions(await rx.json());
         if (labs.ok) setLabOrders(await labs.json());
         if (inv.ok) setInvoices(await inv.json());
-        if (reports.ok) setLabReports(await reports.json());
+       if (reports.ok) setLabReports(await reports.json());
         if (staffRes.ok) setStaff(await staffRes.json());
         if (patRes.ok) setPatients(await patRes.json());
-        if (notifRes && notifRes.ok) setNotifications(await notifRes.json()); // <-- ADD THIS
+        if (notifRes && notifRes.ok) setNotifications(await notifRes.json());
+        
+      } catch (err) {
+        console.error("Cloud sync failed:", err);
+      }
+    };
 
     syncCloudData();
     const interval = setInterval(syncCloudData, 10000);
