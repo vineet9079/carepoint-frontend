@@ -3196,11 +3196,9 @@ const handleSendNotification = (recipient, message, senderInfo) => {
  const getDynamicStatus = useCallback((apt) => {
     const { patientId, status: currentStatus, date: aptDate } = apt;
     
-    // Explicit manual status checks
     if (currentStatus === 'Completed') return { text: 'Completed', color: 'bg-emerald-50 text-emerald-600 border border-emerald-100' };
     if (currentStatus === 'Pending Approval') return { text: 'Pending Approval', color: 'bg-amber-50 text-amber-700 border border-amber-200' };
     if (currentStatus === 'Awaiting Patient Confirmation') return { text: 'Waiting on Patient', color: 'bg-blue-50 text-blue-700 border border-blue-200' };
-    if (currentStatus === 'Waiting for Doctor') return { text: 'Waiting for Doctor', color: 'bg-indigo-50 text-indigo-600 border border-indigo-100' };
 
     const hasPendingInv = invoices.some(i => i.patientId === patientId && i.status === 'PENDING');
     const hasPendingRx = prescriptions.some(r => r.patientId === patientId && r.status === 'PENDING');
@@ -3213,17 +3211,17 @@ const handleSendNotification = (recipient, message, senderInfo) => {
     const todayStr = getLocalDateStr();
     const targetDate = aptDate || todayStr;
 
-    // FIX: Check the 'services' text string because consultation_fee column doesn't exist in the database
-    const hasPaidFee = invoices.some(i => 
-      i.patientId === patientId && 
-      i.status === 'PAID' && 
-      i.date && i.date.includes(targetDate) &&
-      i.services && i.services.includes('Consultation Fee')
-    );
+    const isPaid = 
+      currentStatus === 'Scheduled (Paid)' || 
+      currentStatus === 'Waiting for Doctor' ||
+      invoices.some(i => i.patientId === patientId && i.status === 'PAID' && i.date && i.date.includes(targetDate) && i.services && i.services.includes('Consultation Fee'));
 
-    if (hasPaidFee) {
-      if (targetDate === todayStr) return { text: 'Waiting for Doctor', color: 'bg-indigo-50 text-indigo-600 border border-indigo-100' };
-      return { text: 'Scheduled (Paid)', color: 'bg-emerald-50 text-emerald-600 border border-emerald-200' };
+    if (isPaid) {
+      if (targetDate === todayStr) {
+        return { text: 'Waiting for Doctor', color: 'bg-indigo-50 text-indigo-600 border border-indigo-100' };
+      } else {
+        return { text: 'Scheduled (Paid)', color: 'bg-emerald-50 text-emerald-600 border border-emerald-200' };
+      }
     }
     
     return { text: 'Scheduled', color: 'bg-gray-50 text-gray-600 border border-gray-200' };
@@ -3322,11 +3320,10 @@ const sendSmartNotification = (patientId, type, refId) => {
     if (newLabOrder) { setLabOrders([newLabOrder, ...labOrders]); pushToCloud('/lab-orders', 'POST', newLabOrder); if (!newRx) sendSmartNotification(newLabOrder.patientId, "PAYMENT", newLabOrder.id); }
   };
 
-  const handleBookAppointment = (newAppointment, isWebPaid = false) => { 
-    // FIX: Set the appointment status correctly from the start based on payment
+const handleBookAppointment = (newAppointment, isWebPaid = false) => { 
     const finalAppointment = { 
       ...newAppointment, 
-      status: isWebPaid ? 'Waiting for Doctor' : 'Scheduled' 
+      status: isWebPaid ? 'Scheduled (Paid)' : 'Scheduled' 
     };
     setAppointments(prev => [...prev, finalAppointment]); 
     setIsBookingModalOpen(false); 
@@ -3341,7 +3338,7 @@ const sendSmartNotification = (patientId, type, refId) => {
       };
       setInvoices(prev => [feeInvoice, ...prev]); pushToCloud('/invoices', 'POST', feeInvoice);
     }
-  };
+  }; 
   const handleApproveWebRequest = (aptId) => {
     const targetApt = appointments.find(a => a.id === aptId);
     if (!targetApt) return;
@@ -3391,8 +3388,7 @@ const sendSmartNotification = (patientId, type, refId) => {
 
 const handleCheckInPatient = (apt) => {
     if (window.confirm(`Collect ₹590 and check-in ${apt.patientName}?`)) {
-      // FIX: Explicitly update the status to 'Waiting for Doctor' so it saves permanently to the database
-      const updatedApt = { ...apt, status: 'Waiting for Doctor' };
+      const updatedApt = { ...apt, status: 'Scheduled (Paid)' };
       setAppointments(prev => prev.map(a => a.id === apt.id ? updatedApt : a));
       pushToCloud(`/appointments/${apt.id}`, 'PUT', updatedApt);
       
@@ -3405,7 +3401,7 @@ const handleCheckInPatient = (apt) => {
       setInvoices(prev => [feeInvoice, ...prev]); pushToCloud('/invoices', 'POST', feeInvoice);
       toast.success(`₹590 fee recorded. Patient is now Waiting for Doctor.`);
     }
-  };  
+  };
 const handleCompleteApt = (aptId) => {
     if (window.confirm("Force this appointment to Completed?")) {
       const targetApt = appointments.find(a => a.id === aptId);
@@ -3450,16 +3446,14 @@ const handleCompleteApt = (aptId) => {
     toast.success(`${duesType === 'rx' ? 'Pharmacy' : 'Lab'} dues cleared! Order unlocked for fulfillment.`);
   };
 
- const handlePatientConfirmApt = (aptId) => {
+const handlePatientConfirmApt = (aptId) => {
     const targetApt = appointments.find(a => a.id === aptId);
     if (!targetApt) return;
     
-    // FIX: Pre-paid web bookings skip "Scheduled" and go straight to the doctor's queue
-    const updatedApt = { ...targetApt, status: 'Waiting for Doctor' };
+    const updatedApt = { ...targetApt, status: 'Scheduled (Paid)' };
     setAppointments(appointments.map(a => a.id === aptId ? updatedApt : a));
     pushToCloud(`/appointments/${aptId}`, 'PUT', updatedApt);
   };
-
   const handlePatientRescheduleApt = (aptId, newDetails) => {
     const targetApt = appointments.find(a => a.id === aptId);
     if (!targetApt) return;
