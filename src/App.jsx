@@ -3194,13 +3194,13 @@ const handleSendNotification = (recipient, message, senderInfo) => {
   };
 
  const getDynamicStatus = useCallback((apt) => {
-    const { patientId, status: currentStatus, date: aptDate, paymentStatus } = apt;
+    const { patientId, status: currentStatus, date: aptDate } = apt;
     
-    // Explicit manual completion check
+    // Explicit manual status checks
     if (currentStatus === 'Completed') return { text: 'Completed', color: 'bg-emerald-50 text-emerald-600 border border-emerald-100' };
-    
     if (currentStatus === 'Pending Approval') return { text: 'Pending Approval', color: 'bg-amber-50 text-amber-700 border border-amber-200' };
     if (currentStatus === 'Awaiting Patient Confirmation') return { text: 'Waiting on Patient', color: 'bg-blue-50 text-blue-700 border border-blue-200' };
+    if (currentStatus === 'Waiting for Doctor') return { text: 'Waiting for Doctor', color: 'bg-indigo-50 text-indigo-600 border border-indigo-100' };
 
     const hasPendingInv = invoices.some(i => i.patientId === patientId && i.status === 'PENDING');
     const hasPendingRx = prescriptions.some(r => r.patientId === patientId && r.status === 'PENDING');
@@ -3213,17 +3213,17 @@ const handleSendNotification = (recipient, message, senderInfo) => {
     const todayStr = getLocalDateStr();
     const targetDate = aptDate || todayStr;
 
-    const datePaidInvoices = invoices.filter(i => i.patientId === patientId && i.status === 'PAID' && i.date && i.date.includes(targetDate));
+    // FIX: Check the 'services' text string because consultation_fee column doesn't exist in the database
+    const hasPaidFee = invoices.some(i => 
+      i.patientId === patientId && 
+      i.status === 'PAID' && 
+      i.date && i.date.includes(targetDate) &&
+      i.services && i.services.includes('Consultation Fee')
+    );
 
-    // NOTE: We removed the automated "Completed" trigger here. 
-    // Patients will only complete when manually discharged by the Doctor or Receptionist.
-
-    if (paymentStatus === 'PAID' || datePaidInvoices.some(i => i.consultationFee > 0)) {
-      if (targetDate === todayStr) {
-        return { text: 'Waiting for Doctor', color: 'bg-indigo-50 text-indigo-600 border border-indigo-100' };
-      } else {
-        return { text: 'Scheduled (Paid)', color: 'bg-emerald-50 text-emerald-600 border border-emerald-200' };
-      }
+    if (hasPaidFee) {
+      if (targetDate === todayStr) return { text: 'Waiting for Doctor', color: 'bg-indigo-50 text-indigo-600 border border-indigo-100' };
+      return { text: 'Scheduled (Paid)', color: 'bg-emerald-50 text-emerald-600 border border-emerald-200' };
     }
     
     return { text: 'Scheduled', color: 'bg-gray-50 text-gray-600 border border-gray-200' };
@@ -3323,7 +3323,11 @@ const sendSmartNotification = (patientId, type, refId) => {
   };
 
   const handleBookAppointment = (newAppointment, isWebPaid = false) => { 
-    const finalAppointment = { ...newAppointment, status: isWebPaid ? 'Pending Approval' : 'Scheduled', paymentStatus: isWebPaid ? 'PAID' : 'UNPAID' };
+    // FIX: Set the appointment status correctly from the start based on payment
+    const finalAppointment = { 
+      ...newAppointment, 
+      status: isWebPaid ? 'Waiting for Doctor' : 'Scheduled' 
+    };
     setAppointments(prev => [...prev, finalAppointment]); 
     setIsBookingModalOpen(false); 
     pushToCloud('/appointments', 'POST', finalAppointment);
@@ -3333,12 +3337,11 @@ const sendSmartNotification = (patientId, type, refId) => {
         id: `INV-FEE-${Math.floor(Math.random() * 9000) + 1000}`,
         patientId: newAppointment.patientId, patientName: newAppointment.patientName,
         consultationFee: 500, labTotal: 0, pharmacyTotal: 0, subtotal: 500, gstAmount: 90, advancePaid: 0, totalAmount: 590, 
-        status: 'PAID', date: newAppointment.date + 'T' + new Date().toISOString().split('T')[1], services: 'Online Booking Consultation Fee'
+        status: 'PAID', date: newAppointment.date, services: 'Online Booking Consultation Fee'
       };
       setInvoices(prev => [feeInvoice, ...prev]); pushToCloud('/invoices', 'POST', feeInvoice);
     }
   };
-
   const handleApproveWebRequest = (aptId) => {
     const targetApt = appointments.find(a => a.id === aptId);
     if (!targetApt) return;
@@ -3365,9 +3368,10 @@ const sendSmartNotification = (patientId, type, refId) => {
     }
   };
 
-  const handleCheckInPatient = (apt) => {
+const handleCheckInPatient = (apt) => {
     if (window.confirm(`Collect ₹590 and check-in ${apt.patientName}?`)) {
-      const updatedApt = { ...apt, paymentStatus: 'PAID' };
+      // FIX: Explicitly update the status to 'Waiting for Doctor' so it saves permanently to the database
+      const updatedApt = { ...apt, status: 'Waiting for Doctor' };
       setAppointments(prev => prev.map(a => a.id === apt.id ? updatedApt : a));
       pushToCloud(`/appointments/${apt.id}`, 'PUT', updatedApt);
       
@@ -3375,12 +3379,12 @@ const sendSmartNotification = (patientId, type, refId) => {
         id: `INV-FEE-${Math.floor(Math.random() * 9000) + 1000}`,
         patientId: apt.patientId, patientName: apt.patientName,
         consultationFee: 500, labTotal: 0, pharmacyTotal: 0, subtotal: 500, gstAmount: 90, advancePaid: 0, totalAmount: 590, 
-        status: 'PAID', date: apt.date + 'T' + new Date().toISOString().split('T')[1], services: 'Desk Walk-in Consultation Fee'
+        status: 'PAID', date: apt.date, services: 'Desk Walk-in Consultation Fee'
       };
       setInvoices(prev => [feeInvoice, ...prev]); pushToCloud('/invoices', 'POST', feeInvoice);
       toast.success(`₹590 fee recorded. Patient is now Waiting for Doctor.`);
     }
-  };
+  };  
 const handleCompleteApt = (aptId) => {
     if (window.confirm("Force this appointment to Completed?")) {
       const targetApt = appointments.find(a => a.id === aptId);
