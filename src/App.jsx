@@ -3450,10 +3450,12 @@ const handleCompleteApt = (aptId) => {
     toast.success(`${duesType === 'rx' ? 'Pharmacy' : 'Lab'} dues cleared! Order unlocked for fulfillment.`);
   };
 
-  const handlePatientConfirmApt = (aptId) => {
+ const handlePatientConfirmApt = (aptId) => {
     const targetApt = appointments.find(a => a.id === aptId);
     if (!targetApt) return;
-    const updatedApt = { ...targetApt, status: 'Scheduled' };
+    
+    // FIX: Pre-paid web bookings skip "Scheduled" and go straight to the doctor's queue
+    const updatedApt = { ...targetApt, status: 'Waiting for Doctor' };
     setAppointments(appointments.map(a => a.id === aptId ? updatedApt : a));
     pushToCloud(`/appointments/${aptId}`, 'PUT', updatedApt);
   };
