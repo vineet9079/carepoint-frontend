@@ -3500,13 +3500,27 @@ const handlePatientConfirmApt = (aptId) => {
     pushToCloud(`/inventory/${updatedItem.id}`, 'PUT', updatedItem);
   };
   
-  const handleSaveLabReport = (newLab) => { 
-    setLabReports([newLab, ...labReports]); 
-    pushToCloud('/lab-reports', 'POST', newLab);
-    const updatedOrder = { ...labOrders.find(o => o.id === newLab.orderId), status: 'COMPLETED' };
-    setLabOrders(labOrders.map(o => o.id === newLab.orderId ? updatedOrder : o));
-    pushToCloud(`/lab-orders/${updatedOrder.id}`, 'PUT', updatedOrder);
-    sendSmartNotification(newLab.patientId, "REPORT", newLab.testName);
+ const handleSaveLabReport = (labData) => { 
+    const orderId = labData.orderId;
+    const targetOrder = labOrders.find(o => o.id === orderId);
+    if (!targetOrder) return;
+    
+    // Create the completed report object with the actual results
+    const completedReport = { 
+      ...targetOrder, 
+      result: labData.result, 
+      status: 'COMPLETED', 
+      reported: new Date().toISOString().split('T')[0] 
+    };
+    
+    // Move from Orders to Reports in local state
+    setLabOrders(prev => prev.filter(o => o.id !== orderId));
+    setLabReports(prev => [completedReport, ...prev]);
+    
+    // Hit the correct PUT route to save the text results to the cloud
+    pushToCloud(`/lab-reports/${orderId}`, 'PUT', { result: labData.result, status: 'COMPLETED' });
+    
+    sendSmartNotification(completedReport.patientId, "REPORT", completedReport.testName);
   };  
 
   const handleCreateInvoice = (newInvoice) => { 
