@@ -3572,14 +3572,15 @@ useEffect(() => {
       const headers = { 'Authorization': `Bearer ${token}` };
 
       try {
-        // Patient-only sync to prevent 401 errors
+       // Patient-only sync
         if (user.role === 'patient') {
-          const [apt, rx, labs, inv, reports] = await Promise.all([
+          const [apt, rx, labs, inv, reports, staffRes] = await Promise.all([
             fetch(`${baseUrl}/appointments`, { headers }),
             fetch(`${baseUrl}/prescriptions`, { headers }),
             fetch(`${baseUrl}/lab-orders`, { headers }),
             fetch(`${baseUrl}/invoices`, { headers }),
-            fetch(`${baseUrl}/lab-reports`, { headers })
+            fetch(`${baseUrl}/lab-reports`, { headers }),
+            fetch(`${baseUrl}/staff`, { headers }) // FIX: Fetch staff to populate the doctor dropdown
           ]);
           
           if (apt.ok) setAppointments(await apt.json());
@@ -3587,8 +3588,9 @@ useEffect(() => {
           if (labs.ok) setLabOrders(await labs.json());
           if (inv.ok) setInvoices(await inv.json());
           if (reports.ok) setLabReports(await reports.json());
+          if (staffRes.ok) setStaff(await staffRes.json()); // FIX: Save staff to local state
           
-          return; // Exits before hitting staff-only endpoints
+          return; // Exits before hitting the restricted /api/patients endpoint
         }
 
         // Staff sync (fetches all data including staff and patients)
