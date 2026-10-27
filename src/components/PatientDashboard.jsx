@@ -357,7 +357,9 @@ const [showNotifs, setShowNotifs] = useState(false);
                       </div>
                     )}
                   </div>
-                )})        
+                );
+              })
+            )}
         {/* ========================================= */}
         {/* TAB 2: MEDICAL HISTORY (GRID ON DESKTOP)  */}
 {/* ========================================= */}
