@@ -360,9 +360,13 @@ const [showNotifs, setShowNotifs] = useState(false);
                 );
               })
             )}
-        {/* ========================================= */}
-        {/* TAB 2: MEDICAL HISTORY (GRID ON DESKTOP)  */}
-{/* ========================================= */}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================= */}
+      {/* TAB 2: MEDICAL HISTORY (GRID ON DESKTOP)  */}
+      {/* ========================================= */}
         {activeTab === 'history' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10">
             
