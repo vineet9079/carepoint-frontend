@@ -3152,6 +3152,7 @@ const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
 
   const [notifications, setNotifications] = useStickyState([], 'carepoint_notifications');
   const [deletedItems, setDeletedItems] = useStickyState([], 'carepoint_deleted_items');
+const [offlineQueue, setOfflineQueue] = useStickyState([], 'carepoint_offline_queue');
 const handleSendNotification = (recipient, message, senderInfo) => {
     const newNotif = {
       id: `msg-${Date.now()}`,
@@ -3176,7 +3177,11 @@ const handleSendNotification = (recipient, message, senderInfo) => {
     toast.success("Notification permanently marked as read");
   };
   const pushToCloud = async (endpoint, method, payload) => {
-    if (!isOnline) return; 
+    if (!isOnline) {
+      setOfflineQueue(prev => [...prev, { endpoint, method, payload }]);
+      toast.success("Saved locally. Will sync to cloud when online.");
+      return; 
+    } 
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`https://carepoint-services.onrender.com/api${endpoint}`, {
@@ -3189,7 +3194,27 @@ const handleSendNotification = (recipient, message, senderInfo) => {
       }
     } catch (err) {}
   };
-
+React.useEffect(() => {
+    if (isOnline && offlineQueue.length > 0) {
+      const syncOfflineData = async () => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        
+        toast.success(`Syncing ${offlineQueue.length} offline records to the cloud...`);
+        for (const task of offlineQueue) {
+          try {
+            await fetch(`https://carepoint-services.onrender.com/api${task.endpoint}`, {
+              method: task.method,
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify(task.payload)
+            });
+          } catch (err) {}
+        }
+        setOfflineQueue([]); // Clear the queue after successful upload
+      };
+      syncOfflineData();
+    }
+  }, [isOnline, offlineQueue]);
 const getDynamicStatus = useCallback((apt) => {
     const { patientId, status: currentStatus, date: aptDate } = apt;
     
