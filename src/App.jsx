@@ -3475,8 +3475,25 @@ const handlePatientConfirmApt = (aptId) => {
     if (!targetApt) return;
     
     const updatedApt = { ...targetApt, status: 'Scheduled (Paid)' };
-    setAppointments(appointments.map(a => a.id === aptId ? updatedApt : a));
+    setAppointments(prev => prev.map(a => a.id === aptId ? updatedApt : a));
     pushToCloud(`/appointments/${aptId}`, 'PUT', updatedApt);
+
+    // FIX: Automatically generate the official invoice receipt for web payments!
+    const existingInvoice = invoices.find(i => i.patientId === targetApt.patientId && i.date === targetApt.date && i.services.includes('Consultation'));
+    
+    if (!existingInvoice) {
+      const feeInvoice = {
+        id: `INV-WEB-${Math.floor(Math.random() * 9000) + 1000}`,
+        patientId: targetApt.patientId, 
+        patientName: targetApt.patientName,
+        consultationFee: 500, labTotal: 0, pharmacyTotal: 0, 
+        subtotal: 500, gstAmount: 90, advancePaid: 0, totalAmount: 590, 
+        status: 'PAID', date: targetApt.date, 
+        services: 'Online Booking Consultation Fee'
+      };
+      setInvoices(prev => [feeInvoice, ...prev]); 
+      pushToCloud('/invoices', 'POST', feeInvoice);
+    }
   };
   const handlePatientRescheduleApt = (aptId, newDetails) => {
     const targetApt = appointments.find(a => a.id === aptId);
