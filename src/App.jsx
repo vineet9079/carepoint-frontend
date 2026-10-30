@@ -3204,24 +3204,101 @@ const handleSendNotification = (recipient, message, senderInfo) => {
     });
     toast.success("Notification permanently marked as read");
   };
-  const pushToCloud = async (endpoint, method, payload) => {
-    if (!isOnline) {
-      setOfflineQueue(prev => [...prev, { endpoint, method, payload }]);
-      toast.success("Saved locally. Will sync to cloud when online.");
-      return; 
-    } 
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`https://carepoint-services.onrender.com/api${endpoint}`, {
-        method: method,
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(payload)
-      });
-      if (res.status === 401) {
-        toast.error("Session expired."); localStorage.removeItem('token'); setUser(null); 
+  
+const pushToCloud = async (endpoint, method, payload) => {
+  if (!isOnline) {
+    console.warn("[CLOUD] Offline: request queued", {
+      endpoint,
+      method
+    });
+
+    setOfflineQueue(prev => [
+      ...prev,
+      { endpoint, method, payload }
+    ]);
+
+    return { ok: false, queued: true };
+  }
+
+  const token = localStorage.getItem("token");
+
+  try {
+    console.log("[CLOUD] Request started:", {
+      endpoint,
+      method,
+      payloadId: payload?.id
+    });
+
+    const response = await fetch(
+      `https://carepoint-services.onrender.com/api${endpoint}`,
+      {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: method === "DELETE"
+          ? undefined
+          : JSON.stringify(payload)
       }
-    } catch (err) {}
-  };
+    );
+
+    const responseText = await response.text();
+
+    let data = {};
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = { message: responseText };
+    }
+
+    if (response.status === 401) {
+      console.error("[CLOUD] Authentication failed:", endpoint);
+
+      localStorage.removeItem("token");
+      setUser(null);
+
+      return { ok: false, status: 401, data };
+    }
+
+    if (!response.ok) {
+      console.error("[CLOUD] Request failed:", {
+        endpoint,
+        status: response.status,
+        data
+      });
+
+      return {
+        ok: false,
+        status: response.status,
+        data
+      };
+    }
+
+    console.log("[CLOUD] Request successful:", {
+      endpoint,
+      status: response.status
+    });
+
+    return {
+      ok: true,
+      status: response.status,
+      data
+    };
+
+  } catch (error) {
+    console.error("[CLOUD] Network exception:", {
+      endpoint,
+      error: error.message
+    });
+
+    return {
+      ok: false,
+      error: error.message
+    };
+  }
+};
+
 React.useEffect(() => {
     if (isOnline && offlineQueue.length > 0) {
       const syncOfflineData = async () => {
@@ -3301,40 +3378,154 @@ const handleDischargePatient = (patientId) => {
     const newNotif = { id: `ticket-${Date.now()}`, title: 'New Support Ticket', message: message, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
     setNotifications([newNotif, ...notifications]);
   };
-const sendSmartNotification = (patientEmail, patientName, type, refId) => {
-    // Fallback safeguard: if email is missing, log a warning to console
-    if (!patientEmail) {
-      console.warn("Smart Notification Skipped: No email found for patient:", patientName);
-      return; 
-    } 
-    
-    const portalUrl = "https://carepoint-yd7i.onrender.com/#/login";
-    
-    const subject = type === "PAYMENT" 
-      ? `CarePoint Update: Details available for Order ${refId}` 
-      : `CarePoint Update: Medical Report ${refId} is available`;
-      
-    const redirectTarget = type === "PAYMENT" ? "status" : "history";
-    const secureLink = `${portalUrl}?phone=${encodeURIComponent(patientEmail)}&redirect=${redirectTarget}`;
-    
-    const htmlMessage = `<div style="font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px;"><h2 style="color: #4355B9; margin-top: 0;">CarePoint Health Network</h2><p style="color: #374151; font-size: 16px;">Hello ${patientName},</p><p style="color: #374151; font-size: 16px;">${type === "PAYMENT" ? `Your medical order <strong>${refId}</strong> has been processed and is ready for review.` : `Your diagnostic report <strong>${refId}</strong> has been officially verified and is ready for download.`}</p><div style="text-align: center; margin: 30px 0;"><a href="${secureLink}" style="background-color: #4355B9; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">${type === "PAYMENT" ? "View Order Details" : "View Official Report"}</a></div><p style="color: #6b7280; font-size: 12px; text-align: center; margin-bottom: 0;">Automated system message. Do not reply.</p></div>`;
 
-    fetch('https://carepoint-services.onrender.com/api/notify/email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: patientEmail, subject, htmlMessage })
+const escapeEmailHtml = (value) =>
+  String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+
+const sendSmartNotification = async (
+  patientId,
+  patientEmail,
+  patientName,
+  type,
+  refId
+) => {
+  const normalizedEmail = patientEmail?.trim();
+
+  if (!patientId) {
+    console.error("[EMAIL] Notification cancelled: Missing patientId");
+    return { success: false };
+  }
+
+  const token = localStorage.getItem("token");
+
+  if (!token) {
+    console.error("[EMAIL] Notification cancelled: Missing auth token");
+    return { success: false };
+  }
+
+  const portalUrl = "https://carepoint-yd7i.onrender.com/#/login";
+
+  const subject =
+    type === "PAYMENT"
+      ? `CarePoint Payment Update: ${refId}`
+      : `CarePoint Lab Report Available: ${refId}`;
+
+  const redirectTarget =
+    type === "PAYMENT" ? "status" : "history";
+
+  // Do not put patient email addresses in public URLs.
+  const secureLink =
+    `${portalUrl}?redirect=${redirectTarget}`;
+
+  const safeName = escapeEmailHtml(patientName || "Patient");
+
+  const htmlMessage = `
+    <div style="
+      font-family: Arial;
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+    ">
+      <h2 style="color: #4355B9;">
+        CarePoint Health Network
+      </h2>
+
+      <p>Hello ${safeName},</p>
+
+      <p>
+        ${
+          type === "PAYMENT"
+            ? `Your medical order ${refId} has been processed.`
+            : `Your diagnostic report ${refId} is now available.`
+        }
+      </p>
+
+      <div style="text-align:center;margin:30px 0;">
+        <a href="${secureLink}"
+          style="
+            background:#4355B9;
+            color:white;
+            padding:14px 24px;
+            text-decoration:none;
+            border-radius:8px;
+            font-weight:bold;
+          ">
+          View ${type === "PAYMENT" ? "Payment Details" : "Lab Report"}
+        </a>
+      </div>
+
+      <p style="color:#6b7280;font-size:12px;">
+        Automated CarePoint notification.
+      </p>
+    </div>
+  `;
+
+  console.log("[EMAIL] Dispatch initiated:", {
+    patientId,
+    hasFrontendEmail: Boolean(normalizedEmail),
+    type,
+    refId
+  });
+
+  try {
+   const response = await fetch(
+  'https://carepoint-services.onrender.com/api/notify/email',
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      email: normalizedEmail,
+      subject,
+      htmlMessage
     })
-    .then(async res => {
-      if(!res.ok) {
-        const errBody = await res.text();
-        console.error("Email API Error Response:", errBody);
-        toast.error("Warning: Email delivery failed.");
-      } else {
-        toast.success("Notification email dispatched successfully!");
-      }
-    })
-    .catch(err => console.error("Email Fetch Exception:", err));
-  };
+  }
+);
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data.success) {
+      console.error("[EMAIL] Backend dispatch failed:", {
+        status: response.status,
+        data
+      });
+
+      toast.error("Email notification could not be delivered.");
+
+      return { success: false, data };
+    }
+
+    console.log("[EMAIL] Gmail notification accepted:", {
+      patientId,
+      messageId: data.messageId
+    });
+
+    toast.success("Notification email dispatched successfully!");
+
+    return { success: true, data };
+
+  } catch (error) {
+    console.error("[EMAIL] Fetch exception:", error);
+
+    toast.error("Email service connection failed.");
+
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
   const nextPatientId = React.useMemo(() => {
     const maxNum = patients.reduce((max, p) => {
       const match = String(p?.id || '').match(/(\d+)$/);
@@ -3355,27 +3546,73 @@ const sendSmartNotification = (patientEmail, patientName, type, refId) => {
       pushToCloud(`/patients/${patientId}`, 'DELETE', {});
     }
   };
-const handleSavePrescription = (newRx, newLabOrder) => { 
-    const pEmail = newRx?.patientEmail || newLabOrder?.patientEmail || patients.find(p => p.id === (newRx?.patientId || newLabOrder?.patientId))?.email;
-    const pName = newRx?.patientName || newLabOrder?.patientName;
-    
-    if (newRx) { 
-      setPrescriptions([newRx, ...prescriptions]); 
-      pushToCloud('/prescriptions', 'POST', newRx); 
-      if (pEmail) {
-        setTimeout(() => sendSmartNotification(pEmail, pName, "PAYMENT", newRx.id), 500);
+
+const handleSavePrescription = async (newRx, newLabOrder) => {
+  const patientId = newRx?.patientId || newLabOrder?.patientId;
+
+  const patient = patients.find(
+    p => p.id === patientId
+  );
+
+  const patientEmail =
+    newRx?.patientEmail ||
+    newLabOrder?.patientEmail ||
+    patient?.email ||
+    "";
+
+  const patientName =
+    newRx?.patientName ||
+    newLabOrder?.patientName ||
+    patient?.name ||
+    "Patient";
+
+  console.log("[PRESCRIPTION] Submission started:", {
+    patientId,
+    hasEmail: Boolean(patientEmail),
+    hasPrescription: Boolean(newRx),
+    hasLabOrder: Boolean(newLabOrder)
+  });
+
+  try {
+    if (newRx) {
+      const savedRx = await pushToCloud(
+        "/prescriptions",
+        "POST",
+        newRx
+      );
+
+      if (!savedRx.ok) {
+        toast.error("Prescription cloud save failed.");
+        return;
       }
+
+      setPrescriptions(prev => [newRx, ...prev]);
+
     }
-    
-    if (newLabOrder) { 
-      setLabOrders([newLabOrder, ...labOrders]); 
-      pushToCloud('/lab-orders', 'POST', newLabOrder); 
-      if (pEmail) {
-        const delay = newRx ? 2500 : 500;
-        setTimeout(() => sendSmartNotification(pEmail, pName, "PAYMENT", newLabOrder.id), delay); 
+
+    if (newLabOrder) {
+      const savedLab = await pushToCloud(
+        "/lab-orders",
+        "POST",
+        newLabOrder
+      );
+
+      if (!savedLab.ok) {
+        toast.error("Lab order cloud save failed.");
+        return;
       }
+
+      setLabOrders(prev => [newLabOrder, ...prev]);
+
     }
-  };
+
+    console.log("[PRESCRIPTION] Processing completed.");
+
+  } catch (error) {
+    console.error("[PRESCRIPTION] Processing error:", error);
+    toast.error("Unable to complete clinical submission.");
+  }
+};
 
 const handleBookAppointment = (newAppointment, isWebPaid = false) => { 
     const finalAppointment = { 
@@ -3493,6 +3730,14 @@ const handleCompleteApt = (aptId) => {
       }
     }
 
+    const targetOrderExists = duesType === 'rx'
+      ? prescriptions.some(item => item.id === itemId)
+      : labOrders.some(item => item.id === itemId);
+    if (!targetOrderExists) {
+      toast.error("The selected department order could not be found.");
+      return;
+    }
+
     const newInvoice = {
       id: `INV-${duesType.toUpperCase()}-${Math.floor(Math.random() * 9000) + 1000}`,
       patientId: patientId, patientName: patientName, consultationFee: 0,
@@ -3503,24 +3748,52 @@ const handleCompleteApt = (aptId) => {
       services: dynamicServices // Explicitly binds the dynamic string
     };
     
+const invoiceSaved = await pushToCloud(
+  '/invoices',
+  'POST',
+  newInvoice
+);
+
+if (!invoiceSaved?.ok) {
+  toast.error("Invoice could not be saved on the server.");
+  return;
+}
     setInvoices(prev => [newInvoice, ...prev]);
-    await pushToCloud('/invoices', 'POST', newInvoice);
 
     if (duesType === 'rx') {
       const target = prescriptions.find(r => r.id === itemId);
       if (target) {
         const updated = { ...target, status: 'PAID' }; 
+        const orderSaved = await pushToCloud(`/prescriptions/${itemId}`, 'PUT', updated);
+        if (!orderSaved?.ok) {
+          toast.error("Prescription payment update failed.");
+          return;
+        }
         setPrescriptions(prev => prev.map(r => r.id === itemId ? updated : r));
-        await pushToCloud(`/prescriptions/${itemId}`, 'PUT', updated);
       }
     } else {
       const target = labOrders.find(l => l.id === itemId);
       if (target) {
         const updated = { ...target, status: 'PAID' }; 
+        const orderSaved = await pushToCloud(`/lab-orders/${itemId}`, 'PUT', updated);
+        if (!orderSaved?.ok) {
+          toast.error("Laboratory payment update failed.");
+          return;
+        }
         setLabOrders(prev => prev.map(l => l.id === itemId ? updated : l));
-        await pushToCloud(`/lab-orders/${itemId}`, 'PUT', updated);
       }
     }
+const patient = patients.find(
+    p => p.id === patientId
+);
+
+await sendSmartNotification(
+    patientId,
+    patient?.email || "",
+    patientName,
+    "PAYMENT",
+    newInvoice.id
+);
     toast.success(`${duesType === 'rx' ? 'Pharmacy' : 'Lab'} dues cleared!`);
   };
 
@@ -3599,40 +3872,123 @@ const handlePatientConfirmApt = (aptId) => {
     pushToCloud(`/inventory/${updatedItem.id}`, 'PUT', updatedItem);
   };
   
- const handleSaveLabReport = (labData) => { 
-    const orderId = labData.orderId;
-    const targetOrder = labOrders.find(o => o.id === orderId);
-    if (!targetOrder) return;
-    
-    const completedReport = { 
-      ...targetOrder, 
-      result: labData.result, 
-      status: 'COMPLETED', 
-      reported: new Date().toISOString().split('T')[0] 
-    };
-    
-    setLabOrders(prev => prev.filter(o => o.id !== orderId));
-    setLabReports(prev => [completedReport, ...prev]);
-    pushToCloud(`/lab-reports/${orderId}`, 'PUT', { result: labData.result, status: 'COMPLETED' });
-    
-    const pEmail = targetOrder.patientEmail || patients.find(p => p.id === completedReport.patientId)?.email;
-    if (pEmail) {
-      sendSmartNotification(pEmail, completedReport.patientName, "REPORT", completedReport.testName);
-    }
-  };  
+ 
+const handleSaveLabReport = async (labData) => {
+  const orderId = labData.orderId;
 
- const handleCreateInvoice = (newInvoice) => { 
-    setInvoices([newInvoice, ...invoices]); 
-    setIsInvoiceModalOpen(false); 
-    pushToCloud('/invoices', 'POST', newInvoice);
+  const targetOrder = labOrders.find(
+    order => order.id === orderId
+  );
 
-    const pEmail = newInvoice.patientEmail || patients.find(p => p.id === newInvoice.patientId)?.email;
-    if (pEmail) {
-      setTimeout(() => {
-        sendSmartNotification(pEmail, newInvoice.patientName, "PAYMENT", newInvoice.id);
-      }, 500);
-    }
+  if (!targetOrder) {
+    console.error("[LAB] Order not found:", orderId);
+    return;
+  }
+
+  const patient = patients.find(
+    p => p.id === targetOrder.patientId
+  );
+
+  const completedReport = {
+    ...targetOrder,
+    result: labData.result,
+    status: "COMPLETED",
+    reported: new Date().toISOString().split("T")[0]
   };
+
+  console.log("[LAB] Report completion started:", {
+    orderId,
+    patientId: targetOrder.patientId,
+    hasEmail: Boolean(targetOrder.patientEmail || patient?.email)
+  });
+
+  try {
+    const saved = await pushToCloud(
+      `/lab-reports/${orderId}`,
+      "PUT",
+      {
+        result: labData.result,
+        status: "COMPLETED"
+      }
+    );
+
+    if (!saved.ok) {
+      toast.error("Unable to save lab report.");
+      return;
+    }
+
+    setLabOrders(prev =>
+      prev.filter(order => order.id !== orderId)
+    );
+
+    setLabReports(prev => [
+      completedReport,
+      ...prev
+    ]);
+
+    await sendSmartNotification(
+      targetOrder.patientId,
+      targetOrder.patientEmail || patient?.email || "",
+      targetOrder.patientName || patient?.name,
+      "REPORT",
+      targetOrder.testName || orderId
+    );
+
+  } catch (error) {
+    console.error("[LAB] Report processing failed:", error);
+  }
+};
+  
+
+ 
+const handleCreateInvoice = async (newInvoice) => {
+  const patient = patients.find(
+    p => p.id === newInvoice.patientId
+  );
+
+  const patientEmail =
+    newInvoice.patientEmail ||
+    patient?.email ||
+    "";
+
+  console.log("[BILLING] Invoice creation started:", {
+    invoiceId: newInvoice.id,
+    patientId: newInvoice.patientId,
+    hasEmail: Boolean(patientEmail)
+  });
+
+  try {
+    const saved = await pushToCloud(
+      "/invoices",
+      "POST",
+      newInvoice
+    );
+
+    if (!saved.ok) {
+      toast.error("Invoice could not be saved.");
+      return;
+    }
+
+    setInvoices(prev => [
+      newInvoice,
+      ...prev
+    ]);
+
+    setIsInvoiceModalOpen(false);
+
+    await sendSmartNotification(
+      newInvoice.patientId,
+      patientEmail,
+      newInvoice.patientName || patient?.name,
+      "PAYMENT",
+      newInvoice.id
+    );
+
+  } catch (error) {
+    console.error("[BILLING] Invoice processing failed:", error);
+  }
+};
+
   
  const executePayment = async (paymentId) => {
     if (paymentId.startsWith('RX-')) {
@@ -3649,25 +4005,53 @@ const handlePatientConfirmApt = (aptId) => {
     const targetInv = invoices.find(inv => inv.id === paymentId);
     if (targetInv) {
       const updatedInv = { ...targetInv, status: 'PAID' };
+      const paymentSaved = await pushToCloud(
+    `/invoices/${paymentId}`,
+    "PUT",
+    updatedInv
+);
+
+if (!paymentSaved?.ok) {
+    toast.error("Payment update failed on the server.");
+    return;
+}
       setInvoices(prev => prev.map(inv => inv.id === paymentId ? updatedInv : inv));
       setPayInvoice(null);
-      await pushToCloud(`/invoices/${paymentId}`, 'PUT', updatedInv);
+
+const patient = patients.find(
+    p => p.id === targetInv.patientId
+);
 
       // Await the auto-unlocks
       for (const rx of prescriptions) {
         if (rx.patientId === targetInv.patientId && rx.status === 'PENDING') {
           const updatedRx = { ...rx, status: 'PAID' };
+          const rxSaved = await pushToCloud(`/prescriptions/${rx.id}`, 'PUT', updatedRx);
+          if (!rxSaved?.ok) {
+            toast.error("A prescription could not be unlocked on the server.");
+            return;
+          }
           setPrescriptions(prev => prev.map(r => r.id === rx.id ? updatedRx : r));
-          await pushToCloud(`/prescriptions/${rx.id}`, 'PUT', updatedRx);
         }
       }
       for (const lab of labOrders) {
         if (lab.patientId === targetInv.patientId && lab.status === 'PENDING') {
           const updatedLab = { ...lab, status: 'PAID' };
+          const labSaved = await pushToCloud(`/lab-orders/${lab.id}`, 'PUT', updatedLab);
+          if (!labSaved?.ok) {
+            toast.error("A laboratory order could not be unlocked on the server.");
+            return;
+          }
           setLabOrders(prev => prev.map(l => l.id === lab.id ? updatedLab : l));
-          await pushToCloud(`/lab-orders/${lab.id}`, 'PUT', updatedLab);
         }
       }
+      await sendSmartNotification(
+        targetInv.patientId,
+        patient?.email || "",
+        targetInv.patientName || patient?.name || "Patient",
+        "PAYMENT",
+        targetInv.id
+      );
       toast.success("Payment Successful! Associated orders unlocked.");
     }
   };
