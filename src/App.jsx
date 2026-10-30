@@ -3285,13 +3285,13 @@ const handleDischargePatient = (patientId) => {
 const sendSmartNotification = (patientEmail, patientName, type, refId) => {
     if (!patientEmail) return; 
     
-    const portalUrl = window.location.origin + "/#/login";
+    const portalUrl = "https://carepoint-yd7i.onrender.com/#/login";
     
-    // FIX 1: Removed aggressive spam-triggering words (Payment, Action Required, Pay Securely)
     const subject = type === "PAYMENT" 
       ? `CarePoint Update: Details available for Order ${refId}` 
       : `CarePoint Update: Medical Report ${refId} is available`;
       
+    // FIX: Include the patient's email in the URL so the portal automatically logs them in and routes them
     const redirectTarget = type === "PAYMENT" ? "status" : "history";
     const secureLink = `${portalUrl}?phone=${encodeURIComponent(patientEmail)}&redirect=${redirectTarget}`;
     

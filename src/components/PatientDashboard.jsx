@@ -14,12 +14,17 @@ export default function PatientDashboard({
   // --- WHATSAPP REDIRECT ENGINE ---
   // Initializes tab based on WhatsApp deep link if it exists
   const [activeTab, setActiveTab] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
+    const redirectTarget = urlParams.get('redirect');
+    if (redirectTarget) {
+      return redirectTarget; // Automatically switches to 'status' for dues or 'history' for reports
+    }
     const savedTab = localStorage.getItem('carepoint_redirect_tab');
     if (savedTab) {
-      localStorage.removeItem('carepoint_redirect_tab'); // Clear it after reading
+      localStorage.removeItem('carepoint_redirect_tab');
       return savedTab;
     }
-    return 'status'; // Default tab
+    return 'status';
   });
 // NEW: Contact Modal State
   const [isContactOpen, setIsContactOpen] = useState(false);
