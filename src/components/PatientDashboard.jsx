@@ -98,9 +98,10 @@ const [showNotifs, setShowNotifs] = useState(false);
   }, [pastLabReports]);
 
   // Payment Handler Simulation
-  const handleOnlinePayment = (type, id, amount) => {
+ // Payment Handler Simulation (FIXED: Await the transaction)
+  const handleOnlinePayment = async (type, id, amount) => {
     if (window.confirm(`Proceed to secure payment gateway to pay ₹${amount} + 18% GST?`)) {
-      onClearDues(currentUser.id, type, id, amount);
+      await onClearDues(currentUser.id, type, id, amount);
     }
   };
 
