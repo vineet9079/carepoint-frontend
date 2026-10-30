@@ -1550,7 +1550,7 @@ function CreateInvoiceModal({ isOpen, onClose, patients, prescriptions, labOrder
       advancePaid: advancePaid,
       totalAmount: finalTotalAmount, 
       status: 'PENDING',
-      date: new Date().toISOString()
+      date: getLocalDateStr() // FIX: Use local date
     };
     onSubmit(newInvoice);
   };
@@ -3447,7 +3447,9 @@ const handleCompleteApt = (aptId) => {
       patientId: patientId, patientName: patientName, consultationFee: 0,
       labTotal: duesType === 'lab' ? numAmount : 0, pharmacyTotal: duesType === 'rx' ? numAmount : 0,
       subtotal: numAmount, gstAmount: Math.round(numAmount * 0.18), totalAmount: Math.round(numAmount * 1.18),
-      status: 'PAID', date: new Date().toISOString(), services: duesType === 'rx' ? 'Pharmacy Medicines (Pre-paid)' : 'Laboratory Tests (Pre-paid)'
+      status: 'PAID', 
+      date: getLocalDateStr(), // FIX: Safe local date for Patient Portal
+      services: duesType === 'rx' ? 'Pharmacy Medicines (Pre-paid)' : 'Laboratory Tests (Pre-paid)'
     };
     setInvoices(prev => [newInvoice, ...prev]);
     pushToCloud('/invoices', 'POST', newInvoice);
@@ -3567,11 +3569,45 @@ const handlePatientConfirmApt = (aptId) => {
     pushToCloud('/invoices', 'POST', newInvoice);
   };
   
-  const executePayment = (invId) => {
-    const updatedInv = { ...invoices.find(inv => inv.id === invId), status: 'PAID' };
-    setInvoices(invoices.map(inv => inv.id === invId ? updatedInv : inv));
-    setPayInvoice(null);
-    pushToCloud(`/invoices/${invId}`, 'PUT', updatedInv);
+ const executePayment = (paymentId) => {
+    // 1. Intercept Direct Portal Payments for Pharmacy
+    if (paymentId.startsWith('RX-')) {
+      const rx = prescriptions.find(r => r.id === paymentId);
+      if (rx) handleClearDepartmentDues(rx.patientId, 'rx', paymentId, 350);
+      return;
+    }
+    // 2. Intercept Direct Portal Payments for Labs
+    if (paymentId.startsWith('ORD-') || paymentId.startsWith('LAB-')) {
+      const lab = labOrders.find(l => l.id === paymentId);
+      if (lab) handleClearDepartmentDues(lab.patientId, 'lab', paymentId, labTestPrices[lab.testName] || 500);
+      return;
+    }
+
+    // 3. Standard Invoice Payment
+    const targetInv = invoices.find(inv => inv.id === paymentId);
+    if (targetInv) {
+      const updatedInv = { ...targetInv, status: 'PAID' };
+      setInvoices(prev => prev.map(inv => inv.id === paymentId ? updatedInv : inv));
+      setPayInvoice(null);
+      pushToCloud(`/invoices/${paymentId}`, 'PUT', updatedInv);
+
+      // FIX: Auto-unlock underlying Pharmacy and Lab orders if Master Invoice is paid
+      prescriptions.forEach(rx => {
+        if (rx.patientId === targetInv.patientId && rx.status === 'PENDING') {
+          const updatedRx = { ...rx, status: 'PAID' };
+          setPrescriptions(prev => prev.map(r => r.id === rx.id ? updatedRx : r));
+          pushToCloud(`/prescriptions/${rx.id}`, 'PUT', updatedRx);
+        }
+      });
+      labOrders.forEach(lab => {
+        if (lab.patientId === targetInv.patientId && lab.status === 'PENDING') {
+          const updatedLab = { ...lab, status: 'PAID' };
+          setLabOrders(prev => prev.map(l => l.id === lab.id ? updatedLab : l));
+          pushToCloud(`/lab-orders/${lab.id}`, 'PUT', updatedLab);
+        }
+      });
+      toast.success("Payment Successful! Associated orders unlocked.");
+    }
   };
 
   const handleAddStaff = async (newStaffMember) => { 
