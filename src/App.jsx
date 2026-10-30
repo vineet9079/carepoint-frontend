@@ -3320,17 +3320,27 @@ const sendSmartNotification = (patientEmail, patientName, type, refId) => {
       pushToCloud(`/patients/${patientId}`, 'DELETE', {});
     }
   };
-  const handleSavePrescription = (newRx, newLabOrder) => { 
+const handleSavePrescription = (newRx, newLabOrder) => { 
     const pEmail = patients.find(p => p.id === (newRx?.patientId || newLabOrder?.patientId))?.email;
     const pName = newRx?.patientName || newLabOrder?.patientName;
     
     if (newRx) { 
-      setPrescriptions([newRx, ...prescriptions]); pushToCloud('/prescriptions', 'POST', newRx); 
-      if(pEmail) sendSmartNotification(pEmail, pName, "PAYMENT", newRx.id); 
+      setPrescriptions([newRx, ...prescriptions]); 
+      pushToCloud('/prescriptions', 'POST', newRx); 
+      if (pEmail) sendSmartNotification(pEmail, pName, "PAYMENT", newRx.id); 
     }
+    
     if (newLabOrder) { 
-      setLabOrders([newLabOrder, ...labOrders]); pushToCloud('/lab-orders', 'POST', newLabOrder); 
-      if (!newRx && pEmail) sendSmartNotification(pEmail, pName, "PAYMENT", newLabOrder.id); 
+      setLabOrders([newLabOrder, ...labOrders]); 
+      pushToCloud('/lab-orders', 'POST', newLabOrder); 
+      
+      if (pEmail) {
+        // FIX: Removed the '!newRx' block so it always sends, and added a 1-second 
+        // delay so Google API doesn't flag simultaneous emails as spam.
+        setTimeout(() => {
+          sendSmartNotification(pEmail, pName, "PAYMENT", newLabOrder.id);
+        }, 1000); 
+      }
     }
   };
 
@@ -3583,10 +3593,18 @@ const handlePatientConfirmApt = (aptId) => {
     }
   };  
 
-  const handleCreateInvoice = (newInvoice) => { 
+ const handleCreateInvoice = (newInvoice) => { 
     setInvoices([newInvoice, ...invoices]); 
     setIsInvoiceModalOpen(false); 
     pushToCloud('/invoices', 'POST', newInvoice);
+
+    // FIX: Automatically email the patient for manual desk invoices
+    const pEmail = patients.find(p => p.id === newInvoice.patientId)?.email;
+    if (pEmail) {
+      setTimeout(() => {
+        sendSmartNotification(pEmail, newInvoice.patientName, "PAYMENT", newInvoice.id);
+      }, 500);
+    }
   };
   
  const executePayment = async (paymentId) => {
