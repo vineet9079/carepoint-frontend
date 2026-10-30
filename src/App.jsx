@@ -2724,7 +2724,8 @@ const PharmacyModule = ({ prescriptions, inventory, invoices, onOpenStockModal, 
                 <div key={item.id} className="p-4 border-b border-gray-50 flex items-center justify-between group hover:bg-gray-50/80 transition rounded-xl">
                   <div>
                     <p className="font-bold text-sm text-gray-900">{item.name}</p>
-                    <p className="text-[10px] text-gray-400">Batch {item.batch} • <span className={`${isExpired ? 'text-red-600 font-bold' : isExpiringSoon ? 'text-amber-600 font-bold' : ''}`}> Exp: {item.expiry}</span></p>
+                    {/* FIX: Slice the raw timestamp for clean formatting */}
+                    <p className="text-[10px] text-gray-400">Batch {item.batch} • <span className={`${isExpired ? 'text-red-600 font-bold' : isExpiringSoon ? 'text-amber-600 font-bold' : ''}`}> Exp: {item.expiry ? item.expiry.split('T')[0] : ''}</span></p>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className={`text-xs font-bold ${item.quantity < 50 ? 'text-amber-500' : 'text-emerald-500'}`}>{item.quantity} left</div>
@@ -3520,21 +3521,28 @@ const handlePatientConfirmApt = (aptId) => {
     pushToCloud(`/prescriptions/${updatedRx.id}`, 'PUT', updatedRx);
   };
   
-  const executeFulfillPrescription = (rxId, fulfillDataList) => {
+ const executeFulfillPrescription = async (rxId, fulfillDataList) => {
     let newInventory = [...inventory];
     let totalCost = 0;
-    fulfillDataList.forEach(data => {
+    
+    // FIX: Use for...of to properly await the cloud/offline push for each medicine
+    for (const data of fulfillDataList) {
       const stockItem = newInventory.find(i => i.id === data.stockId);
       if(stockItem) {
         stockItem.quantity -= parseInt(data.dispenseQty);
         totalCost += (parseInt(data.dispenseQty) * stockItem.unitPrice);
-        pushToCloud(`/inventory/${stockItem.id}`, 'PUT', stockItem); 
+        await pushToCloud(`/inventory/${stockItem.id}`, 'PUT', stockItem); 
       }
-    });
+    }
+    
     setInventory(newInventory);
-    const updatedRx = { ...prescriptions.find(rx => rx.id === rxId), status: 'FULFILLED', totalCost };
-    setPrescriptions(prescriptions.map(rx => rx.id === rxId ? updatedRx : rx));
-    pushToCloud(`/prescriptions/${rxId}`, 'PUT', updatedRx); 
+    const targetRx = prescriptions.find(rx => rx.id === rxId);
+    
+    if (targetRx) {
+      const updatedRx = { ...targetRx, status: 'FULFILLED', totalCost };
+      setPrescriptions(prev => prev.map(rx => rx.id === rxId ? updatedRx : rx));
+      await pushToCloud(`/prescriptions/${rxId}`, 'PUT', updatedRx); 
+    }
     setFulfillRx(null);
   };
 
@@ -3723,7 +3731,8 @@ useEffect(() => {
           fetch(`${baseUrl}/staff`, { headers }),
           fetch(`${baseUrl}/patients`, { headers }),
           fetch(`${baseUrl}/notifications`, { headers }) // <-- ADD THIS
-        ]);
+	  fetch(`${baseUrl}/inventory`, { headers })        
+]);
 
         if (apt.ok) setAppointments(await apt.json());
         if (rx.ok) setPrescriptions(await rx.json());
@@ -3733,6 +3742,7 @@ useEffect(() => {
         if (staffRes.ok) setStaff(await staffRes.json());
         if (patRes.ok) setPatients(await patRes.json());
         if (notifRes && notifRes.ok) setNotifications(await notifRes.json());
+	if (stockRes && stockRes.ok) setInventory(await stockRes.json());
         
       } catch (err) {
         console.error("Cloud sync failed:", err);
