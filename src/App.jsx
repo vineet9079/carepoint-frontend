@@ -2339,10 +2339,13 @@ const PrescriptionsModule = ({ currentUser, patients, appointments = [], prescri
     setForm({ ...form, medications: newMeds.length > 0 ? newMeds : [{ name: '', route: 'Oral', dosage: '', frequency: '', duration: '' }] });
   };
 
- const handleSubmit = (e) => {
+const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.allergyChecked) { toast.error("Please confirm allergy check."); return; }
-    const validMeds = medications.filter(m => m.name.trim() !== '');
+    
+    // FIX: Changed 'medications' to 'form.medications'
+    const validMeds = form.medications.filter(m => m.name.trim() !== '');
+    
     if (validMeds.length === 0 && !form.reqLab) { toast.error("Please prescribe a medicine or select a lab test."); return; }
     
     const selectedPatient = activePatients.find(p => p.id === form.patientId) || patients.find(p => p.id === form.patientId);
@@ -2352,7 +2355,7 @@ const PrescriptionsModule = ({ currentUser, patients, appointments = [], prescri
         id: `RX-${Date.now().toString().slice(-5)}`, 
         patientName: selectedPatient ? selectedPatient.name : 'Unknown', 
         patientId: form.patientId, 
-        patientEmail: selectedPatient?.email || '', // <--- Attached directly
+        patientEmail: selectedPatient?.email || '',
         medications: validMeds, 
         diagnosis: form.diagnosis, 
         status: 'PENDING', 
@@ -2365,7 +2368,7 @@ const PrescriptionsModule = ({ currentUser, patients, appointments = [], prescri
         id: `ORD-${Date.now().toString().slice(-5)}`, 
         patientName: selectedPatient ? selectedPatient.name : 'Unknown', 
         patientId: form.patientId, 
-        patientEmail: selectedPatient?.email || '', // <--- Attached directly
+        patientEmail: selectedPatient?.email || '',
         testName: form.reqLab, 
         status: 'PENDING' 
       };
