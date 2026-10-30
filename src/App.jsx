@@ -1484,15 +1484,20 @@ const FulfillPrescriptionModal = ({ isOpen, onClose, onSubmit, prescription, inv
 function CreateInvoiceModal({ isOpen, onClose, patients, prescriptions, labOrders, labTestPrices, invoices, inventory, onSubmit }) {
   const [form, setForm] = React.useState({ consultationFee: 500, selectedPatientId: '' });
 
+// Inside CreateInvoiceModal, replace the existing useEffect with this:
   React.useEffect(() => {
     if (form.selectedPatientId) {
       const todayStr = getLocalDateStr();
-      const hasPaidConsultToday = invoices?.some(inv => 
-        inv.patientId === form.selectedPatientId && 
-        inv.consultationFee > 0 && 
-        inv.status === 'PAID' && 
-        inv.date && inv.date.includes(todayStr)
-      );
+      const hasPaidConsultToday = invoices?.some(inv => {
+        // FIX: Safely extract just the YYYY-MM-DD part from the cloud timestamp
+        const safeDate = inv.date ? inv.date.split('T')[0] : '';
+        return (
+          inv.patientId === form.selectedPatientId && 
+          inv.consultationFee > 0 && 
+          inv.status === 'PAID' && 
+          safeDate === todayStr // Now this will perfectly match!
+        );
+      });
       setForm(prev => ({ ...prev, consultationFee: hasPaidConsultToday ? 0 : 500 }));
     }
   }, [form.selectedPatientId, invoices]);
@@ -1522,12 +1527,16 @@ function CreateInvoiceModal({ isOpen, onClose, patients, prescriptions, labOrder
     return { ...rx, processedMeds };
   });
 
+// FIX: Safely slice the timestamp to prevent advance payments from vanishing
   const todayStr = getLocalDateStr();
-  const advancePaid = invoices?.filter(inv => 
-    inv.patientId === form.selectedPatientId && 
-    inv.services === 'Online Booking Consultation Fee' && 
-    inv.date && inv.date.includes(todayStr)
-  ).reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0) || 0;
+  const advancePaid = invoices?.filter(inv => {
+    const safeDate = inv.date ? inv.date.split('T')[0] : '';
+    return (
+      inv.patientId === form.selectedPatientId && 
+      inv.services === 'Online Booking Consultation Fee' && 
+      safeDate === todayStr
+    );
+  }).reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0) || 0;
 
   const baseFee = Number(form.consultationFee) || 0;
   const subtotal = baseFee + labTotal + automatedPharmacyTotal;
