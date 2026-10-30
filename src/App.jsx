@@ -2999,7 +2999,7 @@ const BillingModule = ({ invoices, prescriptions, labOrders, patients, onClearDu
     return pName.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
-  const historyInvoices = invoices.filter(inv => inv.patientName?.toLowerCase().includes(searchTerm.toLowerCase()));
+  const historyInvoices = invoices.filter(inv => (inv.patientName || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="max-w-6xl mx-auto pb-10">
@@ -3331,15 +3331,13 @@ const sendSmartNotification = (patientId, type, refId) => {
     setPatients(prev => [newPatient, ...prev]); setIsPatientModalOpen(false); pushToCloud('/patients', 'POST', newPatient);
   };  
 
-  const handleDeletePatient = async (patientId) => {
+ const handleDeletePatient = (patientId) => {
     if (window.confirm("Permanently remove patient?")) {
-      try {
-        const res = await fetch(`https://carepoint-services.onrender.com/api/patients/${patientId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-        if (res.ok) { setDeletedItems(prev => [...prev, patientId]); setPatients(prev => prev.filter(p => p.id !== patientId)); }
-      } catch (err) {}
+      setDeletedItems(prev => [...prev, patientId]);
+      setPatients(prev => prev.filter(p => p.id !== patientId));
+      pushToCloud(`/patients/${patientId}`, 'DELETE', {});
     }
   };
-
   const handleSavePrescription = (newRx, newLabOrder) => { 
     if (newRx) { setPrescriptions([newRx, ...prescriptions]); pushToCloud('/prescriptions', 'POST', newRx); sendSmartNotification(newRx.patientId, "PAYMENT", newRx.id); }
     if (newLabOrder) { setLabOrders([newLabOrder, ...labOrders]); pushToCloud('/lab-orders', 'POST', newLabOrder); if (!newRx) sendSmartNotification(newLabOrder.patientId, "PAYMENT", newLabOrder.id); }
