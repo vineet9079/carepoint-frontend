@@ -3439,7 +3439,7 @@ const handleCompleteApt = (aptId) => {
   };
 
 
-  const handleClearDepartmentDues = (patientId, duesType, itemId, amount) => {
+  const handleClearDepartmentDues = async (patientId, duesType, itemId, amount) => {
     const patientName = patients.find(p => p.id === patientId)?.name || 'Unknown Patient';
     const numAmount = parseFloat(amount) || 0;
     const newInvoice = {
@@ -3448,25 +3448,27 @@ const handleCompleteApt = (aptId) => {
       labTotal: duesType === 'lab' ? numAmount : 0, pharmacyTotal: duesType === 'rx' ? numAmount : 0,
       subtotal: numAmount, gstAmount: Math.round(numAmount * 0.18), totalAmount: Math.round(numAmount * 1.18),
       status: 'PAID', 
-      date: getLocalDateStr(), // FIX: Safe local date for Patient Portal
+      date: getLocalDateStr(),
       services: duesType === 'rx' ? 'Pharmacy Medicines (Pre-paid)' : 'Laboratory Tests (Pre-paid)'
     };
+    
+    // FIX: Force the UI to wait for the cloud upload before proceeding
     setInvoices(prev => [newInvoice, ...prev]);
-    pushToCloud('/invoices', 'POST', newInvoice);
+    await pushToCloud('/invoices', 'POST', newInvoice);
 
     if (duesType === 'rx') {
       const target = prescriptions.find(r => r.id === itemId);
       if (target) {
         const updated = { ...target, status: 'PAID' }; 
         setPrescriptions(prev => prev.map(r => r.id === itemId ? updated : r));
-        pushToCloud(`/prescriptions/${itemId}`, 'PUT', updated);
+        await pushToCloud(`/prescriptions/${itemId}`, 'PUT', updated);
       }
     } else {
       const target = labOrders.find(l => l.id === itemId);
       if (target) {
         const updated = { ...target, status: 'PAID' }; 
         setLabOrders(prev => prev.map(l => l.id === itemId ? updated : l));
-        pushToCloud(`/lab-orders/${itemId}`, 'PUT', updated);
+        await pushToCloud(`/lab-orders/${itemId}`, 'PUT', updated);
       }
     }
     toast.success(`${duesType === 'rx' ? 'Pharmacy' : 'Lab'} dues cleared! Order unlocked for fulfillment.`);
@@ -3569,43 +3571,40 @@ const handlePatientConfirmApt = (aptId) => {
     pushToCloud('/invoices', 'POST', newInvoice);
   };
   
- const executePayment = (paymentId) => {
-    // 1. Intercept Direct Portal Payments for Pharmacy
+ const executePayment = async (paymentId) => {
     if (paymentId.startsWith('RX-')) {
       const rx = prescriptions.find(r => r.id === paymentId);
-      if (rx) handleClearDepartmentDues(rx.patientId, 'rx', paymentId, 350);
+      if (rx) await handleClearDepartmentDues(rx.patientId, 'rx', paymentId, 350);
       return;
     }
-    // 2. Intercept Direct Portal Payments for Labs
     if (paymentId.startsWith('ORD-') || paymentId.startsWith('LAB-')) {
       const lab = labOrders.find(l => l.id === paymentId);
-      if (lab) handleClearDepartmentDues(lab.patientId, 'lab', paymentId, labTestPrices[lab.testName] || 500);
+      if (lab) await handleClearDepartmentDues(lab.patientId, 'lab', paymentId, labTestPrices[lab.testName] || 500);
       return;
     }
 
-    // 3. Standard Invoice Payment
     const targetInv = invoices.find(inv => inv.id === paymentId);
     if (targetInv) {
       const updatedInv = { ...targetInv, status: 'PAID' };
       setInvoices(prev => prev.map(inv => inv.id === paymentId ? updatedInv : inv));
       setPayInvoice(null);
-      pushToCloud(`/invoices/${paymentId}`, 'PUT', updatedInv);
+      await pushToCloud(`/invoices/${paymentId}`, 'PUT', updatedInv);
 
-      // FIX: Auto-unlock underlying Pharmacy and Lab orders if Master Invoice is paid
-      prescriptions.forEach(rx => {
+      // Await the auto-unlocks
+      for (const rx of prescriptions) {
         if (rx.patientId === targetInv.patientId && rx.status === 'PENDING') {
           const updatedRx = { ...rx, status: 'PAID' };
           setPrescriptions(prev => prev.map(r => r.id === rx.id ? updatedRx : r));
-          pushToCloud(`/prescriptions/${rx.id}`, 'PUT', updatedRx);
+          await pushToCloud(`/prescriptions/${rx.id}`, 'PUT', updatedRx);
         }
-      });
-      labOrders.forEach(lab => {
+      }
+      for (const lab of labOrders) {
         if (lab.patientId === targetInv.patientId && lab.status === 'PENDING') {
           const updatedLab = { ...lab, status: 'PAID' };
           setLabOrders(prev => prev.map(l => l.id === lab.id ? updatedLab : l));
-          pushToCloud(`/lab-orders/${lab.id}`, 'PUT', updatedLab);
+          await pushToCloud(`/lab-orders/${lab.id}`, 'PUT', updatedLab);
         }
-      });
+      }
       toast.success("Payment Successful! Associated orders unlocked.");
     }
   };
