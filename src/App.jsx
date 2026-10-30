@@ -3283,7 +3283,11 @@ const handleDischargePatient = (patientId) => {
     setNotifications([newNotif, ...notifications]);
   };
 const sendSmartNotification = (patientEmail, patientName, type, refId) => {
-    if (!patientEmail) return; 
+    // Fallback safeguard: if email is missing, log a warning to console
+    if (!patientEmail) {
+      console.warn("Smart Notification Skipped: No email found for patient:", patientName);
+      return; 
+    } 
     
     const portalUrl = "https://carepoint-yd7i.onrender.com/#/login";
     
@@ -3291,7 +3295,6 @@ const sendSmartNotification = (patientEmail, patientName, type, refId) => {
       ? `CarePoint Update: Details available for Order ${refId}` 
       : `CarePoint Update: Medical Report ${refId} is available`;
       
-    // FIX: Include the patient's email in the URL parameter so the login page routes them correctly
     const redirectTarget = type === "PAYMENT" ? "status" : "history";
     const secureLink = `${portalUrl}?phone=${encodeURIComponent(patientEmail)}&redirect=${redirectTarget}`;
     
@@ -3302,8 +3305,16 @@ const sendSmartNotification = (patientEmail, patientName, type, refId) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: patientEmail, subject, htmlMessage })
     })
-    .then(res => { if(!res.ok) toast.error("Warning: Email delivery failed."); })
-    .catch(err => toast.error("Warning: Email service unreachable."));
+    .then(async res => {
+      if(!res.ok) {
+        const errBody = await res.text();
+        console.error("Email API Error Response:", errBody);
+        toast.error("Warning: Email delivery failed.");
+      } else {
+        toast.success("Notification email dispatched successfully!");
+      }
+    })
+    .catch(err => console.error("Email Fetch Exception:", err));
   };
   const nextPatientId = React.useMemo(() => {
     const maxNum = patients.reduce((max, p) => {
