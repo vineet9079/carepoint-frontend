@@ -1489,13 +1489,12 @@ function CreateInvoiceModal({ isOpen, onClose, patients, prescriptions, labOrder
     if (form.selectedPatientId) {
       const todayStr = getLocalDateStr();
       const hasPaidConsultToday = invoices?.some(inv => {
-        // FIX: Safely extract just the YYYY-MM-DD part from the cloud timestamp
         const safeDate = inv.date ? inv.date.split('T')[0] : '';
         return (
           inv.patientId === form.selectedPatientId && 
-          inv.consultationFee > 0 && 
+          inv.services && inv.services.includes('Consultation') && // FIX: Checking the correct column
           inv.status === 'PAID' && 
-          safeDate === todayStr // Now this will perfectly match!
+          safeDate === todayStr
         );
       });
       setForm(prev => ({ ...prev, consultationFee: hasPaidConsultToday ? 0 : 500 }));
