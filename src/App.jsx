@@ -3282,29 +3282,23 @@ const handleDischargePatient = (patientId) => {
     const newNotif = { id: `ticket-${Date.now()}`, title: 'New Support Ticket', message: message, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
     setNotifications([newNotif, ...notifications]);
   };
-
-const sendSmartNotification = (patientId, type, refId) => {
-    const patient = patients.find(p => p.id === patientId);
-    if (!patient || !patient.email) return; 
+const sendSmartNotification = (patientEmail, patientName, type, refId) => {
+    if (!patientEmail) return; 
     
     const portalUrl = window.location.origin + "/#/login";
     const subject = type === "PAYMENT" ? `Action Required: Pending Payment for Order ${refId}` : `Ready: Your Medical Report ${refId} is available`;
     const redirectTarget = type === "PAYMENT" ? "status" : "history";
-    const secureLink = `${portalUrl}?phone=${encodeURIComponent(patient.email)}&redirect=${redirectTarget}`;
+    const secureLink = `${portalUrl}?phone=${encodeURIComponent(patientEmail)}&redirect=${redirectTarget}`;
     
-    // STRICT SINGLE LINE TO PREVENT GMAIL CRASH
-    const htmlMessage = `<div style="font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px;"><h2 style="color: #4355B9; margin-top: 0;">CarePoint Health Network</h2><p style="color: #374151; font-size: 16px;">Hello ${patient.name},</p><p style="color: #374151; font-size: 16px;">${type === "PAYMENT" ? `Your medical order <strong>${refId}</strong> has been processed and requires payment.` : `Your diagnostic report <strong>${refId}</strong> has been officially verified and is ready for download.`}</p><div style="text-align: center; margin: 30px 0;"><a href="${secureLink}" style="background-color: #4355B9; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">${type === "PAYMENT" ? "Pay Securely Online" : "View Official Report"}</a></div><p style="color: #6b7280; font-size: 12px; text-align: center; margin-bottom: 0;">Automated system message. Do not reply.</p></div>`;
+    const htmlMessage = `<div style="font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px;"><h2 style="color: #4355B9; margin-top: 0;">CarePoint Health Network</h2><p style="color: #374151; font-size: 16px;">Hello ${patientName},</p><p style="color: #374151; font-size: 16px;">${type === "PAYMENT" ? `Your medical order <strong>${refId}</strong> has been processed and requires payment.` : `Your diagnostic report <strong>${refId}</strong> has been officially verified and is ready for download.`}</p><div style="text-align: center; margin: 30px 0;"><a href="${secureLink}" style="background-color: #4355B9; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">${type === "PAYMENT" ? "Pay Securely Online" : "View Official Report"}</a></div><p style="color: #6b7280; font-size: 12px; text-align: center; margin-bottom: 0;">Automated system message. Do not reply.</p></div>`;
 
     fetch('https://carepoint-services.onrender.com/api/notify/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: patient.email, subject, htmlMessage })
-    }).then(res => {
-      if(!res.ok) toast.error("Warning: Email delivery failed.");
-    }).catch(err => {
-      console.error("Email error:", err);
-      toast.error("Warning: Email service unreachable.");
-    });
+      body: JSON.stringify({ email: patientEmail, subject, htmlMessage })
+    })
+    .then(res => { if(!res.ok) toast.error("Warning: Email delivery failed."); })
+    .catch(err => toast.error("Warning: Email service unreachable."));
   };
   const nextPatientId = React.useMemo(() => {
     const maxNum = patients.reduce((max, p) => {
@@ -3327,8 +3321,17 @@ const sendSmartNotification = (patientId, type, refId) => {
     }
   };
   const handleSavePrescription = (newRx, newLabOrder) => { 
-    if (newRx) { setPrescriptions([newRx, ...prescriptions]); pushToCloud('/prescriptions', 'POST', newRx); sendSmartNotification(newRx.patientId, "PAYMENT", newRx.id); }
-    if (newLabOrder) { setLabOrders([newLabOrder, ...labOrders]); pushToCloud('/lab-orders', 'POST', newLabOrder); if (!newRx) sendSmartNotification(newLabOrder.patientId, "PAYMENT", newLabOrder.id); }
+    const pEmail = patients.find(p => p.id === (newRx?.patientId || newLabOrder?.patientId))?.email;
+    const pName = newRx?.patientName || newLabOrder?.patientName;
+    
+    if (newRx) { 
+      setPrescriptions([newRx, ...prescriptions]); pushToCloud('/prescriptions', 'POST', newRx); 
+      if(pEmail) sendSmartNotification(pEmail, pName, "PAYMENT", newRx.id); 
+    }
+    if (newLabOrder) { 
+      setLabOrders([newLabOrder, ...labOrders]); pushToCloud('/lab-orders', 'POST', newLabOrder); 
+      if (!newRx && pEmail) sendSmartNotification(pEmail, pName, "PAYMENT", newLabOrder.id); 
+    }
   };
 
 const handleBookAppointment = (newAppointment, isWebPaid = false) => { 
@@ -3431,15 +3434,20 @@ const handleCompleteApt = (aptId) => {
     const patientName = patients.find(p => p.id === patientId)?.name || 'Unknown Patient';
     const numAmount = parseFloat(amount) || 0;
     
-    // DYNAMIC LAB/MEDICINE NAME EXTRACTION
+    // DYNAMIC LAB/MEDICINE NAME EXTRACTION (FIXED)
     let dynamicServices = duesType === 'rx' ? 'Pharmacy Medicines (Pre-paid)' : 'Laboratory Tests (Pre-paid)';
     
     if (duesType === 'rx') {
       const rx = prescriptions.find(r => r.id === itemId);
-      if (rx && rx.medications) dynamicServices = `Pharmacy: ${rx.medications.map(m => m.name).join(', ')} (Pre-paid)`;
+      // Force extraction of the actual JSON medication names
+      if (rx && rx.medications && Array.isArray(rx.medications)) {
+         dynamicServices = `Pharmacy: ${rx.medications.map(m => m.name).join(', ')}`;
+      }
     } else if (duesType === 'lab') {
       const lab = labOrders.find(l => l.id === itemId) || labReports.find(l => l.id === itemId || l.orderId === itemId);
-      if (lab) dynamicServices = `Lab Test: ${lab.testName} (Pre-paid)`;
+      if (lab && lab.testName) {
+         dynamicServices = `Lab Test: ${lab.testName}`;
+      }
     }
 
     const newInvoice = {
@@ -3449,7 +3457,7 @@ const handleCompleteApt = (aptId) => {
       subtotal: numAmount, gstAmount: Math.round(numAmount * 0.18), totalAmount: Math.round(numAmount * 1.18),
       status: 'PAID', 
       date: getLocalDateStr(),
-      services: dynamicServices
+      services: dynamicServices // Explicitly binds the dynamic string
     };
     
     setInvoices(prev => [newInvoice, ...prev]);
@@ -3568,7 +3576,11 @@ const handlePatientConfirmApt = (aptId) => {
     // Hit the correct PUT route to save the text results to the cloud
     pushToCloud(`/lab-reports/${orderId}`, 'PUT', { result: labData.result, status: 'COMPLETED' });
     
-    sendSmartNotification(completedReport.patientId, "REPORT", completedReport.testName);
+    // FIX: Safely extract email and name before firing the email function
+    const pEmail = patients.find(p => p.id === completedReport.patientId)?.email;
+    if (pEmail) {
+      sendSmartNotification(pEmail, completedReport.patientName, "REPORT", completedReport.testName);
+    }
   };  
 
   const handleCreateInvoice = (newInvoice) => { 
