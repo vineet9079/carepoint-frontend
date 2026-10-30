@@ -3286,11 +3286,16 @@ const sendSmartNotification = (patientEmail, patientName, type, refId) => {
     if (!patientEmail) return; 
     
     const portalUrl = window.location.origin + "/#/login";
-    const subject = type === "PAYMENT" ? `Action Required: Pending Payment for Order ${refId}` : `Ready: Your Medical Report ${refId} is available`;
+    
+    // FIX 1: Removed aggressive spam-triggering words (Payment, Action Required, Pay Securely)
+    const subject = type === "PAYMENT" 
+      ? `CarePoint Update: Details available for Order ${refId}` 
+      : `CarePoint Update: Medical Report ${refId} is available`;
+      
     const redirectTarget = type === "PAYMENT" ? "status" : "history";
     const secureLink = `${portalUrl}?phone=${encodeURIComponent(patientEmail)}&redirect=${redirectTarget}`;
     
-    const htmlMessage = `<div style="font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px;"><h2 style="color: #4355B9; margin-top: 0;">CarePoint Health Network</h2><p style="color: #374151; font-size: 16px;">Hello ${patientName},</p><p style="color: #374151; font-size: 16px;">${type === "PAYMENT" ? `Your medical order <strong>${refId}</strong> has been processed and requires payment.` : `Your diagnostic report <strong>${refId}</strong> has been officially verified and is ready for download.`}</p><div style="text-align: center; margin: 30px 0;"><a href="${secureLink}" style="background-color: #4355B9; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">${type === "PAYMENT" ? "Pay Securely Online" : "View Official Report"}</a></div><p style="color: #6b7280; font-size: 12px; text-align: center; margin-bottom: 0;">Automated system message. Do not reply.</p></div>`;
+    const htmlMessage = `<div style="font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px;"><h2 style="color: #4355B9; margin-top: 0;">CarePoint Health Network</h2><p style="color: #374151; font-size: 16px;">Hello ${patientName},</p><p style="color: #374151; font-size: 16px;">${type === "PAYMENT" ? `Your medical order <strong>${refId}</strong> has been processed and is ready for review.` : `Your diagnostic report <strong>${refId}</strong> has been officially verified and is ready for download.`}</p><div style="text-align: center; margin: 30px 0;"><a href="${secureLink}" style="background-color: #4355B9; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">${type === "PAYMENT" ? "View Order Details" : "View Official Report"}</a></div><p style="color: #6b7280; font-size: 12px; text-align: center; margin-bottom: 0;">Automated system message. Do not reply.</p></div>`;
 
     fetch('https://carepoint-services.onrender.com/api/notify/email', {
       method: 'POST',
@@ -3327,7 +3332,11 @@ const handleSavePrescription = (newRx, newLabOrder) => {
     if (newRx) { 
       setPrescriptions([newRx, ...prescriptions]); 
       pushToCloud('/prescriptions', 'POST', newRx); 
-      if (pEmail) sendSmartNotification(pEmail, pName, "PAYMENT", newRx.id); 
+      
+      if (pEmail) {
+        // Safe 500ms delay
+        setTimeout(() => sendSmartNotification(pEmail, pName, "PAYMENT", newRx.id), 500);
+      }
     }
     
     if (newLabOrder) { 
@@ -3335,11 +3344,10 @@ const handleSavePrescription = (newRx, newLabOrder) => {
       pushToCloud('/lab-orders', 'POST', newLabOrder); 
       
       if (pEmail) {
-        // FIX: Removed the '!newRx' block so it always sends, and added a 1-second 
-        // delay so Google API doesn't flag simultaneous emails as spam.
-        setTimeout(() => {
-          sendSmartNotification(pEmail, pName, "PAYMENT", newLabOrder.id);
-        }, 1000); 
+        // FIX 2: If a medicine was also prescribed, delay this second email by 2500ms 
+        // to completely bypass Google's simultaneous spam limit.
+        const delay = newRx ? 2500 : 500;
+        setTimeout(() => sendSmartNotification(pEmail, pName, "PAYMENT", newLabOrder.id), delay); 
       }
     }
   };
