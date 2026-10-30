@@ -2339,20 +2339,36 @@ const PrescriptionsModule = ({ currentUser, patients, appointments = [], prescri
     setForm({ ...form, medications: newMeds.length > 0 ? newMeds : [{ name: '', route: 'Oral', dosage: '', frequency: '', duration: '' }] });
   };
 
-  const handleSubmit = (e) => {
+ const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.allergyChecked) { toast.error("Please confirm allergy check."); return; }
-    const validMeds = form.medications.filter(m => m.name.trim() !== '');
+    const validMeds = medications.filter(m => m.name.trim() !== '');
     if (validMeds.length === 0 && !form.reqLab) { toast.error("Please prescribe a medicine or select a lab test."); return; }
     
     const selectedPatient = activePatients.find(p => p.id === form.patientId) || patients.find(p => p.id === form.patientId);
     let newRx = null;
     if (validMeds.length > 0) {
-      newRx = { id: `RX-${Date.now().toString().slice(-5)}`, patientName: selectedPatient ? selectedPatient.name : 'Unknown', patientId: form.patientId, medications: validMeds, diagnosis: form.diagnosis, status: 'PENDING', doctorName: currentUser?.name || currentUser?.username };
+      newRx = { 
+        id: `RX-${Date.now().toString().slice(-5)}`, 
+        patientName: selectedPatient ? selectedPatient.name : 'Unknown', 
+        patientId: form.patientId, 
+        patientEmail: selectedPatient?.email || '', // <--- Attached directly
+        medications: validMeds, 
+        diagnosis: form.diagnosis, 
+        status: 'PENDING', 
+        doctorName: currentUser?.name || currentUser?.username 
+      };
     }
     let newLabOrder = null;
     if (form.reqLab) {
-      newLabOrder = { id: `ORD-${Date.now().toString().slice(-5)}`, patientName: selectedPatient ? selectedPatient.name : 'Unknown', patientId: form.patientId, testName: form.reqLab, status: 'PENDING' };
+      newLabOrder = { 
+        id: `ORD-${Date.now().toString().slice(-5)}`, 
+        patientName: selectedPatient ? selectedPatient.name : 'Unknown', 
+        patientId: form.patientId, 
+        patientEmail: selectedPatient?.email || '', // <--- Attached directly
+        testName: form.reqLab, 
+        status: 'PENDING' 
+      };
     }
     onSavePrescription(newRx, newLabOrder);
     toast.success("Clinical order submitted successfully!");
@@ -3337,15 +3353,13 @@ const sendSmartNotification = (patientEmail, patientName, type, refId) => {
     }
   };
 const handleSavePrescription = (newRx, newLabOrder) => { 
-    const pEmail = patients.find(p => p.id === (newRx?.patientId || newLabOrder?.patientId))?.email;
+    const pEmail = newRx?.patientEmail || newLabOrder?.patientEmail || patients.find(p => p.id === (newRx?.patientId || newLabOrder?.patientId))?.email;
     const pName = newRx?.patientName || newLabOrder?.patientName;
     
     if (newRx) { 
       setPrescriptions([newRx, ...prescriptions]); 
       pushToCloud('/prescriptions', 'POST', newRx); 
-      
       if (pEmail) {
-        // Safe 500ms delay
         setTimeout(() => sendSmartNotification(pEmail, pName, "PAYMENT", newRx.id), 500);
       }
     }
@@ -3353,10 +3367,7 @@ const handleSavePrescription = (newRx, newLabOrder) => {
     if (newLabOrder) { 
       setLabOrders([newLabOrder, ...labOrders]); 
       pushToCloud('/lab-orders', 'POST', newLabOrder); 
-      
       if (pEmail) {
-        // FIX 2: If a medicine was also prescribed, delay this second email by 2500ms 
-        // to completely bypass Google's simultaneous spam limit.
         const delay = newRx ? 2500 : 500;
         setTimeout(() => sendSmartNotification(pEmail, pName, "PAYMENT", newLabOrder.id), delay); 
       }
@@ -3590,7 +3601,6 @@ const handlePatientConfirmApt = (aptId) => {
     const targetOrder = labOrders.find(o => o.id === orderId);
     if (!targetOrder) return;
     
-    // Create the completed report object with the actual results
     const completedReport = { 
       ...targetOrder, 
       result: labData.result, 
@@ -3598,15 +3608,11 @@ const handlePatientConfirmApt = (aptId) => {
       reported: new Date().toISOString().split('T')[0] 
     };
     
-    // Move from Orders to Reports in local state
     setLabOrders(prev => prev.filter(o => o.id !== orderId));
     setLabReports(prev => [completedReport, ...prev]);
-    
-    // Hit the correct PUT route to save the text results to the cloud
     pushToCloud(`/lab-reports/${orderId}`, 'PUT', { result: labData.result, status: 'COMPLETED' });
     
-    // FIX: Safely extract email and name before firing the email function
-    const pEmail = patients.find(p => p.id === completedReport.patientId)?.email;
+    const pEmail = targetOrder.patientEmail || patients.find(p => p.id === completedReport.patientId)?.email;
     if (pEmail) {
       sendSmartNotification(pEmail, completedReport.patientName, "REPORT", completedReport.testName);
     }
@@ -3617,8 +3623,7 @@ const handlePatientConfirmApt = (aptId) => {
     setIsInvoiceModalOpen(false); 
     pushToCloud('/invoices', 'POST', newInvoice);
 
-    // FIX: Automatically email the patient for manual desk invoices
-    const pEmail = patients.find(p => p.id === newInvoice.patientId)?.email;
+    const pEmail = newInvoice.patientEmail || patients.find(p => p.id === newInvoice.patientId)?.email;
     if (pEmail) {
       setTimeout(() => {
         sendSmartNotification(pEmail, newInvoice.patientName, "PAYMENT", newInvoice.id);
