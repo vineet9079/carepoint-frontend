@@ -3730,7 +3730,7 @@ useEffect(() => {
           fetch(`${baseUrl}/lab-reports`, { headers }),
           fetch(`${baseUrl}/staff`, { headers }),
           fetch(`${baseUrl}/patients`, { headers }),
-          fetch(`${baseUrl}/notifications`, { headers }) // <-- ADD THIS
+          fetch(`${baseUrl}/notifications`, { headers }), // <-- ADD THIS
 	  fetch(`${baseUrl}/inventory`, { headers })        
 ]);
 
