@@ -3749,7 +3749,7 @@ useEffect(() => {
           return;
         }
 
-        // Staff sync
+       // Staff sync
         const [apt, rx, labs, inv, reports, staffRes, patRes, notifRes, stockRes] = await Promise.all([
           fetch(`${baseUrl}/appointments`, { headers }),
           fetch(`${baseUrl}/prescriptions`, { headers }),
