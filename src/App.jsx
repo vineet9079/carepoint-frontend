@@ -3291,7 +3291,7 @@ const sendSmartNotification = (patientEmail, patientName, type, refId) => {
       ? `CarePoint Update: Details available for Order ${refId}` 
       : `CarePoint Update: Medical Report ${refId} is available`;
       
-    // FIX: Include the patient's email in the URL so the portal automatically logs them in and routes them
+    // FIX: Include the patient's email in the URL parameter so the login page routes them correctly
     const redirectTarget = type === "PAYMENT" ? "status" : "history";
     const secureLink = `${portalUrl}?phone=${encodeURIComponent(patientEmail)}&redirect=${redirectTarget}`;
     
@@ -3750,7 +3750,7 @@ useEffect(() => {
         }
 
         // Staff sync
-        const [apt, rx, labs, inv, reports, staffRes, patRes, notifRes] = await Promise.all([
+        const [apt, rx, labs, inv, reports, staffRes, patRes, notifRes, stockRes] = await Promise.all([
           fetch(`${baseUrl}/appointments`, { headers }),
           fetch(`${baseUrl}/prescriptions`, { headers }),
           fetch(`${baseUrl}/lab-orders`, { headers }),
@@ -3758,19 +3758,19 @@ useEffect(() => {
           fetch(`${baseUrl}/lab-reports`, { headers }),
           fetch(`${baseUrl}/staff`, { headers }),
           fetch(`${baseUrl}/patients`, { headers }),
-          fetch(`${baseUrl}/notifications`, { headers }), // <-- ADD THIS
-	  fetch(`${baseUrl}/inventory`, { headers })        
-]);
+          fetch(`${baseUrl}/notifications`, { headers }),
+          fetch(`${baseUrl}/inventory`, { headers })        
+        ]);
 
         if (apt.ok) setAppointments(await apt.json());
         if (rx.ok) setPrescriptions(await rx.json());
         if (labs.ok) setLabOrders(await labs.json());
         if (inv.ok) setInvoices(await inv.json());
-       if (reports.ok) setLabReports(await reports.json());
+        if (reports.ok) setLabReports(await reports.json());
         if (staffRes.ok) setStaff(await staffRes.json());
         if (patRes.ok) setPatients(await patRes.json());
         if (notifRes && notifRes.ok) setNotifications(await notifRes.json());
-	if (stockRes && stockRes.ok) setInventory(await stockRes.json());
+        if (stockRes && stockRes.ok) setInventory(await stockRes.json());
         
       } catch (err) {
         console.error("Cloud sync failed:", err);
