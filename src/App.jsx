@@ -3286,7 +3286,6 @@ const handleDischargePatient = (patientId) => {
 const sendSmartNotification = (patientId, type, refId) => {
     const patient = patients.find(p => p.id === patientId);
     
-    // FIX 1: Use patient.email instead of patient.phone
     if (!patient || !patient.email) return; 
     
     const portalUrl = window.location.origin + "/#/login";
@@ -3296,31 +3295,11 @@ const sendSmartNotification = (patientId, type, refId) => {
       : `Ready: Your Medical Report ${refId} is available`;
 
     const redirectTarget = type === "PAYMENT" ? "status" : "history";
-    
-    // FIX 2: Inject patient.email into the secure deep link
     const secureLink = `${portalUrl}?phone=${encodeURIComponent(patient.email)}&redirect=${redirectTarget}`;
     
-    const htmlMessage = `
-      <div style="font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px;">
-        <h2 style="color: #4355B9; margin-top: 0;">CarePoint Health Network</h2>
-        <p style="color: #374151; font-size: 16px;">Hello ${patient.name},</p>
-        <p style="color: #374151; font-size: 16px;">
-          ${type === "PAYMENT" 
-            ? `Your medical order <strong>${refId}</strong> has been processed and requires payment before fulfillment.` 
-            : `Your diagnostic report <strong>${refId}</strong> has been officially verified and is ready for download.`}
-        </p>
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${secureLink}" style="background-color: #4355B9; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
-            ${type === "PAYMENT" ? "Pay Securely Online" : "View Official Report"}
-          </a>
-        </div>
-        <p style="color: #6b7280; font-size: 12px; text-align: center; margin-bottom: 0;">
-          This is an automated system message. Do not reply to this email.
-        </p>
-      </div>
-    `;
+    // FIX 2: Flattened to a strict single-line string to prevent Gmail MIME corruption
+    const htmlMessage = `<div style="font-family: Arial; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px;"><h2 style="color: #4355B9; margin-top: 0;">CarePoint Health Network</h2><p style="color: #374151; font-size: 16px;">Hello ${patient.name},</p><p style="color: #374151; font-size: 16px;">${type === "PAYMENT" ? `Your medical order <strong>${refId}</strong> has been processed and requires payment before fulfillment.` : `Your diagnostic report <strong>${refId}</strong> has been officially verified and is ready for download.`}</p><div style="text-align: center; margin: 30px 0;"><a href="${secureLink}" style="background-color: #4355B9; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">${type === "PAYMENT" ? "Pay Securely Online" : "View Official Report"}</a></div><p style="color: #6b7280; font-size: 12px; text-align: center; margin-bottom: 0;">This is an automated system message. Do not reply to this email.</p></div>`;
 
-    // FIX 3: Send payload to patient.email
     fetch('https://carepoint-services.onrender.com/api/notify/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3451,6 +3430,18 @@ const handleCompleteApt = (aptId) => {
   const handleClearDepartmentDues = async (patientId, duesType, itemId, amount) => {
     const patientName = patients.find(p => p.id === patientId)?.name || 'Unknown Patient';
     const numAmount = parseFloat(amount) || 0;
+    
+    // FIX 1: Dynamically pull the exact medicine names or lab test name for the invoice
+    let dynamicServices = duesType === 'rx' ? 'Pharmacy Medicines (Pre-paid)' : 'Laboratory Tests (Pre-paid)';
+    
+    if (duesType === 'rx') {
+      const rx = prescriptions.find(r => r.id === itemId);
+      if (rx && rx.medications) dynamicServices = `Pharmacy: ${rx.medications.map(m => m.name).join(', ')} (Pre-paid)`;
+    } else if (duesType === 'lab') {
+      const lab = labOrders.find(l => l.id === itemId);
+      if (lab) dynamicServices = `Lab Test: ${lab.testName} (Pre-paid)`;
+    }
+
     const newInvoice = {
       id: `INV-${duesType.toUpperCase()}-${Math.floor(Math.random() * 9000) + 1000}`,
       patientId: patientId, patientName: patientName, consultationFee: 0,
@@ -3458,10 +3449,9 @@ const handleCompleteApt = (aptId) => {
       subtotal: numAmount, gstAmount: Math.round(numAmount * 0.18), totalAmount: Math.round(numAmount * 1.18),
       status: 'PAID', 
       date: getLocalDateStr(),
-      services: duesType === 'rx' ? 'Pharmacy Medicines (Pre-paid)' : 'Laboratory Tests (Pre-paid)'
+      services: dynamicServices // Passes the dynamic string to the PDF printer
     };
     
-    // FIX: Force the UI to wait for the cloud upload before proceeding
     setInvoices(prev => [newInvoice, ...prev]);
     await pushToCloud('/invoices', 'POST', newInvoice);
 
