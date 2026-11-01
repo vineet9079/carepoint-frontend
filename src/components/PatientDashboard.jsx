@@ -16,13 +16,13 @@ export default function PatientDashboard({
   const [activeTab, setActiveTab] = useState(() => {
     const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
     const redirectTarget = urlParams.get('redirect');
-    if (redirectTarget) {
-      return redirectTarget; // Automatically switches to 'status' for dues or 'history' for reports
+    if (['status', 'history'].includes(redirectTarget)) {
+      return redirectTarget; // Only allow supported dashboard tabs
     }
     const savedTab = localStorage.getItem('carepoint_redirect_tab');
     if (savedTab) {
       localStorage.removeItem('carepoint_redirect_tab');
-      return savedTab;
+      if (['status', 'history'].includes(savedTab)) return savedTab;
     }
     return 'status';
   });
@@ -43,17 +43,30 @@ const [showNotifs, setShowNotifs] = useState(false);
     prevCountRef.current = currentCount;
   }, [notifications]);
   const [contactMsg, setContactMsg] = useState('');
+  const [isSendingContact, setIsSendingContact] = useState(false);
 
   // NEW: Submit Handler for Patient Messages
-  const handleContactSubmit = (e) => {
+  const handleContactSubmit = async (e) => {
     e.preventDefault();
-    if (!contactMsg.trim()) return;
-    
-    // Sends the message directly to the Admin/Reception desk
-    onSendMessage('ADMIN_RECEPTION', contactMsg, { name: currentUser.name, role: 'Patient' });
-    
-    setIsContactOpen(false);
-    setContactMsg('');
+    const message = contactMsg.trim();
+    if (!message || isSendingContact) return;
+    if (typeof onSendMessage !== 'function') {
+      toast.error('The contact desk is currently unavailable.');
+      return;
+    }
+    setIsSendingContact(true);
+    try {
+      await onSendMessage('ADMIN_RECEPTION', message, {
+        name: currentUser?.name || 'Patient', role: 'Patient'
+      });
+      setIsContactOpen(false);
+      setContactMsg('');
+    } catch (error) {
+      console.error('[PATIENT] Contact request failed:', error);
+      toast.error('Could not send your request. Please try again.');
+    } finally {
+      setIsSendingContact(false);
+    }
   };
   // Modal State for Patient Booking
   const [isBookingOpen, setIsBookingOpen] = useState(false);
@@ -62,17 +75,17 @@ const [showNotifs, setShowNotifs] = useState(false);
     doctorName: '', 
     time: '', 
     reason: '',
-    bloodGroup: currentUser?.bloodGroup && currentUser.bloodGroup !== 'Not specified' ? currentUser.bloodGroup : 'O+' // Default to O+ if unknown
+    bloodGroup: currentUser?.bloodGroup && !['Not specified', 'Unknown'].includes(currentUser.bloodGroup) ? currentUser.bloodGroup : 'Unknown'
   });
 
-  const availableDoctors = staff.filter(s => s.role.toLowerCase() === 'doctor');
+  const availableDoctors = (staff || []).filter(person => String(person?.role || '').toLowerCase() === 'doctor');
 
   // --- DATA FILTERING FOR THIS PATIENT ---
-  const myAppointments = appointments?.filter(a => a.patientId === currentUser?.id) || [];
-  const myPrescriptions = prescriptions?.filter(rx => rx.patientId === currentUser?.id) || [];
-  const myLabOrders = labOrders?.filter(lab => lab.patientId === currentUser?.id) || [];
-  const myLabReports = labReports?.filter(lab => lab.patientId === currentUser?.id) || [];
-  const myInvoices = invoices?.filter(inv => inv.patientId === currentUser?.id) || [];
+  const myAppointments = (appointments || []).filter(a => String(a.patientId) === String(currentUser?.id));
+  const myPrescriptions = (prescriptions || []).filter(rx => String(rx.patientId) === String(currentUser?.id));
+  const myLabOrders = (labOrders || []).filter(lab => String(lab.patientId) === String(currentUser?.id));
+  const myLabReports = (labReports || []).filter(lab => String(lab.patientId) === String(currentUser?.id));
+  const myInvoices = (invoices || []).filter(inv => String(inv.patientId) === String(currentUser?.id));
 
   // Active / Pending Items
   const pendingRxs = myPrescriptions.filter(rx => rx.status === 'PENDING');
@@ -92,48 +105,62 @@ const [showNotifs, setShowNotifs] = useState(false);
     return [...pastLabReports]
       .filter(lab => lab.testName === 'CBC')
       .map(lab => {
-        const match = lab.result?.match(/Hb:\s*([\d.]+)/);
+        const match = String(lab.result || '').match(/\bHb\s*:\s*([\d.]+)/i);
         return {
-          date: lab.reported ? lab.reported.substring(0, 6) : 'Unknown',
+          date: lab.reported && !Number.isNaN(new Date(lab.reported).getTime()) ? new Date(lab.reported).toLocaleDateString('en-GB') : (lab.reported || 'Unknown'),
+          sortDate: lab.reported && !Number.isNaN(new Date(lab.reported).getTime()) ? new Date(lab.reported).getTime() : 0,
           hb: match ? parseFloat(match[1]) : null
         };
       })
       .filter(item => item.hb !== null)
-      .reverse();
+      .sort((a, b) => a.sortDate - b.sortDate);
   }, [pastLabReports]);
 
-  // Payment Handler Simulation
- // Payment Handler Simulation (FIXED: Await the transaction)
-  const handleOnlinePayment = async (type, id, amount) => {
-    if (window.confirm(`Proceed to secure payment gateway to pay ₹${amount} + 18% GST?`)) {
-      await onClearDues(currentUser.id, type, id, amount);
-    }
+  // IMPORTANT: the current parent callback directly marks dues as PAID in the
+  // database. It does not collect money through a payment gateway, so do not
+  // invoke it from this patient-facing "online payment" action.
+  const handleOnlinePayment = () => {
+    toast.error('Online payment is not connected yet. No payment has been taken. Please contact the billing desk.');
   };
 
-  const handleBookingSubmit = (e) => {
+  const handleBookingSubmit = async (e) => {
     e.preventDefault();
     if (!bookingForm.doctorId) { toast.error('Please select a doctor.'); return; }
-    
-    const d = bookingForm.time ? new Date(bookingForm.time) : new Date();
-    const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const timeDisplay = bookingForm.time ? new Date(bookingForm.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '10:00';
+    if (!bookingForm.time) { toast.error('Please select a date and time.'); return; }
+    if (!bookingForm.reason.trim()) { toast.error('Please enter the reason for your visit.'); return; }
 
+    const d = new Date(bookingForm.time);
+    if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) {
+      toast.error('Please choose a future appointment time.');
+      return;
+    }
+
+    const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const timeDisplay = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     const newApt = {
-      id: `APT-${Math.floor(Math.random() * 10000)}`,
+      id: `APT-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`,
       patientId: currentUser.id,
       patientName: currentUser.name,
       doctorId: bookingForm.doctorId,
       doctorName: bookingForm.doctorName,
       date: localDate,
       time: timeDisplay,
-      reason: bookingForm.reason || 'General Consultation',
+      reason: bookingForm.reason.trim(),
       bloodGroup: bookingForm.bloodGroup
     };
 
-    // Triggers booking flow (logs ₹590 fee & alerts receptionist in Appointments dashboard)
-    onBookAppointment(newApt, true);
-    setIsBookingOpen(false);
-    setBookingForm({ doctorId: '', doctorName: '', time: '', reason: '', bloodGroup: 'O+' });
+    if (typeof onBookAppointment !== 'function') {
+      toast.error('Appointment booking is currently unavailable.');
+      return;
+    }
+    try {
+      await Promise.resolve(onBookAppointment(newApt));
+      setIsBookingOpen(false);
+      setBookingForm({ doctorId: '', doctorName: '', time: '', reason: '', bloodGroup: 'Unknown' });
+    } catch (error) {
+      console.error('[PATIENT] Appointment booking failed:', error);
+      toast.error('Could not submit your appointment request. Please try again.');
+    }
   };
 
   return (
@@ -205,7 +232,7 @@ const [showNotifs, setShowNotifs] = useState(false);
             <p className="text-sm text-gray-500 mb-6">Send an issue report or request directly to the Reception/Administration desk.</p>
             <form onSubmit={handleContactSubmit}>
               <textarea value={contactMsg} onChange={e => setContactMsg(e.target.value)} rows="4" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none resize-none mb-4 focus:border-indigo-500" placeholder="Describe your issue or request here..." required />
-              <button type="submit" className="w-full bg-[#4355B9] text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-indigo-700 transition cursor-pointer">Submit Request</button>
+              <button type="submit" disabled={isSendingContact} className="w-full bg-[#4355B9] text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-indigo-700 disabled:opacity-60 transition cursor-pointer">{isSendingContact ? 'Sending…' : 'Submit Request'}</button>
             </form>
           </div>
         </div>
@@ -232,6 +259,7 @@ const [showNotifs, setShowNotifs] = useState(false);
             {/* COLUMN 1: PENDING DUES */}
             <div>
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 px-2 md:text-sm">Pending Actionable Dues</h3>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">Online payment is not configured yet. Please contact the billing desk; this portal will not mark an item paid without a verified payment.</p>
               
               {pendingRxs.length === 0 && pendingLabs.length === 0 && (
                 <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center shadow-sm">
@@ -255,8 +283,8 @@ const [showNotifs, setShowNotifs] = useState(false);
                   <p className="text-sm font-medium text-gray-800 mb-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
                     {rx.medications?.length || 0} medications prescribed. Pay online to forward to pharmacy desk.
                   </p>
-                  <button onClick={() => handleOnlinePayment('rx', rx.id, 350)} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-xl transition shadow-sm cursor-pointer md:text-lg">
-                    Pay ₹350 + GST Online
+                  <button onClick={handleOnlinePayment} className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3.5 rounded-xl transition shadow-sm cursor-pointer md:text-lg">
+                    Online Payment Unavailable
                   </button>
                 </div>
               ))}
@@ -278,8 +306,8 @@ const [showNotifs, setShowNotifs] = useState(false);
                     <p className="text-sm font-medium text-gray-800 mb-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
                       Lab test assigned. Pay online to unlock processing at diagnostics desk.
                     </p>
-                    <button onClick={() => handleOnlinePayment('lab', lab.id, cost)} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-xl transition shadow-sm cursor-pointer md:text-lg">
-                      Pay ₹{cost} + GST Online
+                    <button onClick={handleOnlinePayment} className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3.5 rounded-xl transition shadow-sm cursor-pointer md:text-lg">
+                      Online Payment Unavailable
                     </button>
                   </div>
                 )
@@ -348,8 +376,10 @@ const [showNotifs, setShowNotifs] = useState(false);
                           onClick={() => {
                             if (hasPendingDues) {
                               toast.error("Action denied: You have pending department dues. Please clear them first.");
-                            } else if (window.confirm("Are you sure you want to mark this visit as completed?")) {
+                            } else if (typeof onCompleteApt === 'function') {
                               onCompleteApt(apt.id);
+                            } else {
+                              toast.error('Visit completion is currently unavailable.');
                             }
                           }}
                           className={`w-full py-3 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 ${
@@ -484,7 +514,7 @@ const [showNotifs, setShowNotifs] = useState(false);
           <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-md p-8 relative animate-in fade-in zoom-in duration-200">
             <button onClick={() => setIsBookingOpen(false)} className="absolute top-6 right-6 w-8 h-8 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center hover:bg-gray-100 transition cursor-pointer"><X size={16} /></button>
             <h3 className="text-2xl font-bold text-gray-900 tracking-tight mb-1">Book New Appointment</h3>
-            <p className="text-xs text-gray-500 mb-6">Nominal consultation booking fee: ₹590 (Inclusive of 18% GST)</p>
+            <p className="text-xs text-gray-500 mb-6">Appointment requests are subject to reception confirmation. Any applicable consultation fee will be billed separately.</p>
             <form onSubmit={handleBookingSubmit}>
               <div className="space-y-4 mb-6">
                 <div>
@@ -492,7 +522,7 @@ const [showNotifs, setShowNotifs] = useState(false);
                   <select 
                     value={bookingForm.doctorId} 
                     onChange={e => {
-                      const doc = availableDoctors.find(d => d.username === e.target.value);
+                      const doc = availableDoctors.find(d => String(d.username) === e.target.value);
                       setBookingForm({...bookingForm, doctorId: doc?.username || '', doctorName: doc?.name || doc?.username || ''});
                     }} 
                     className="w-full px-4 py-2.5 rounded-lg border border-gray-200 outline-none text-sm bg-white focus:border-indigo-500" required
@@ -509,7 +539,7 @@ const [showNotifs, setShowNotifs] = useState(false);
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Preferred Date & Time</label>
-                    <input type="datetime-local" value={bookingForm.time} onChange={e => setBookingForm({...bookingForm, time: e.target.value})} className="w-full px-4 py-2.5 rounded-lg border border-gray-200 outline-none text-sm focus:border-indigo-500" required />
+                    <input type="datetime-local" min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} value={bookingForm.time} onChange={e => setBookingForm({...bookingForm, time: e.target.value})} className="w-full px-4 py-2.5 rounded-lg border border-gray-200 outline-none text-sm focus:border-indigo-500" required />
                   </div>
                   <div>
                     {/* NEW: Blood Group Selector */}
@@ -535,7 +565,7 @@ const [showNotifs, setShowNotifs] = useState(false);
               </div>
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={() => setIsBookingOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer">Cancel</button>
-                <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition cursor-pointer">Pay ₹590 & Request Slot</button>
+                <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition cursor-pointer">Request Appointment</button>
               </div>
             </form>
           </div>

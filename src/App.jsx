@@ -1543,13 +1543,19 @@ function CreateInvoiceModal({ isOpen, onClose, patients, prescriptions, labOrder
   const grandTotal = subtotal + gst;
   const finalTotalAmount = Math.max(0, grandTotal - advancePaid); 
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.selectedPatientId) { toast.error("Please select a patient."); return; }
     const newInvoice = {
       id: `INV-${Math.floor(Math.random() * 9000) + 1000}`,
       patientId: form.selectedPatientId,
-      patientName: selectedPatient?.name || 'Unknown Patient', 
+      patientName: selectedPatient?.name || 'Unknown Patient',
+      patientEmail: selectedPatient?.email || '',
+      services: [
+        baseFee > 0 ? 'Consultation' : null,
+        labTotal > 0 ? 'Laboratory Tests' : null,
+        automatedPharmacyTotal > 0 ? 'Pharmacy / Medicines' : null
+      ].filter(Boolean).join(', ') || 'Medical Services',
       consultationFee: baseFee,
       labTotal: labTotal,
       pharmacyTotal: automatedPharmacyTotal,
@@ -1560,7 +1566,7 @@ function CreateInvoiceModal({ isOpen, onClose, patients, prescriptions, labOrder
       status: 'PENDING',
       date: getLocalDateStr() // FIX: Use local date
     };
-    onSubmit(newInvoice);
+    await onSubmit(newInvoice);
   };
 
   return (
@@ -2339,7 +2345,7 @@ const PrescriptionsModule = ({ currentUser, patients, appointments = [], prescri
     setForm({ ...form, medications: newMeds.length > 0 ? newMeds : [{ name: '', route: 'Oral', dosage: '', frequency: '', duration: '' }] });
   };
 
-const handleSubmit = (e) => {
+const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.allergyChecked) { toast.error("Please confirm allergy check."); return; }
     
@@ -2373,8 +2379,8 @@ const handleSubmit = (e) => {
         status: 'PENDING' 
       };
     }
-    onSavePrescription(newRx, newLabOrder);
-    toast.success("Clinical order submitted successfully!");
+    const saved = await onSavePrescription(newRx, newLabOrder);
+    if (!saved) return;
     setForm({ patientId: '', diagnosis: '', medications: [{ name: '', route: 'Oral', dosage: '', frequency: '', duration: '' }], reqLab: '', allergyChecked: false });
     setAiSummary(null);
   };
@@ -3379,15 +3385,6 @@ const handleDischargePatient = (patientId) => {
     setNotifications([newNotif, ...notifications]);
   };
 
-const escapeEmailHtml = (value) =>
-  String(value ?? "").replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;"
-  })[char]);
-
 const sendSmartNotification = async (
   patientId,
   patientEmail,
@@ -3412,18 +3409,20 @@ const sendSmartNotification = async (
   const portalUrl = "https://carepoint-yd7i.onrender.com/#/login";
 
   const subject =
-    type === "PAYMENT"
-      ? `CarePoint Payment Update: ${refId}`
-      : `CarePoint Lab Report Available: ${refId}`;
+    type === "PAYMENT" ? `CarePoint Payment Confirmation: ${refId}` :
+    type === "INVOICE" ? `CarePoint Invoice Generated: ${refId}` :
+    type === "ORDER" ? `CarePoint Medical Order Received: ${refId}` :
+    `CarePoint Lab Report Available: ${refId}`;
 
-  const redirectTarget =
-    type === "PAYMENT" ? "status" : "history";
+  const redirectTarget = type === "PAYMENT" ? "status" : "history";
 
   // Do not put patient email addresses in public URLs.
   const secureLink =
     `${portalUrl}?redirect=${redirectTarget}`;
 
-  const safeName = escapeEmailHtml(patientName || "Patient");
+  const safeName = String(patientName || "Patient").replace(/[&<>"']/g, char => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[char]));
 
   const htmlMessage = `
     <div style="
@@ -3442,9 +3441,10 @@ const sendSmartNotification = async (
 
       <p>
         ${
-          type === "PAYMENT"
-            ? `Your medical order ${refId} has been processed.`
-            : `Your diagnostic report ${refId} is now available.`
+          type === "PAYMENT" ? `Your payment for invoice ${refId} has been recorded successfully.` :
+          type === "INVOICE" ? `Your invoice ${refId} has been generated and is available in the CarePoint portal.` :
+          type === "ORDER" ? `Your prescription or laboratory order ${refId} has been received by CarePoint.` :
+          `Your diagnostic report ${refId} is now available.`
         }
       </p>
 
@@ -3458,7 +3458,7 @@ const sendSmartNotification = async (
             border-radius:8px;
             font-weight:bold;
           ">
-          View ${type === "PAYMENT" ? "Payment Details" : "Lab Report"}
+          View ${type === "PAYMENT" ? "Payment Details" : type === "INVOICE" ? "Invoice" : type === "ORDER" ? "Medical Order" : "Lab Report"}
         </a>
       </div>
 
@@ -3471,12 +3471,19 @@ const sendSmartNotification = async (
   console.log("[EMAIL] Dispatch initiated:", {
     patientId,
     hasFrontendEmail: Boolean(normalizedEmail),
+    recipientLookup: normalizedEmail ? "email-or-patient-id" : "patient-id",
     type,
     refId
   });
 
   try {
-   const response = await fetch(
+    console.log("[EMAIL] Posting notification request:", {
+      endpoint: "/api/notify/email",
+      patientId,
+      type,
+      refId
+    });
+    const response = await fetch(
   'https://carepoint-services.onrender.com/api/notify/email',
   {
     method: 'POST',
@@ -3485,7 +3492,8 @@ const sendSmartNotification = async (
       'Authorization': `Bearer ${token}`
     },
     body: JSON.stringify({
-      email: normalizedEmail,
+      patientId,
+      email: normalizedEmail || undefined,
       subject,
       htmlMessage
     })
@@ -3493,6 +3501,11 @@ const sendSmartNotification = async (
 );
 
     const data = await response.json().catch(() => ({}));
+    console.log("[EMAIL] Notification endpoint response:", {
+      status: response.status,
+      ok: response.ok,
+      requestId: data.requestId || null
+    });
 
     if (!response.ok || !data.success) {
       console.error("[EMAIL] Backend dispatch failed:", {
@@ -3549,22 +3562,9 @@ const sendSmartNotification = async (
 
 const handleSavePrescription = async (newRx, newLabOrder) => {
   const patientId = newRx?.patientId || newLabOrder?.patientId;
-
-  const patient = patients.find(
-    p => p.id === patientId
-  );
-
-  const patientEmail =
-    newRx?.patientEmail ||
-    newLabOrder?.patientEmail ||
-    patient?.email ||
-    "";
-
-  const patientName =
-    newRx?.patientName ||
-    newLabOrder?.patientName ||
-    patient?.name ||
-    "Patient";
+  const patient = patients.find(p => String(p.id) === String(patientId));
+  const patientEmail = newRx?.patientEmail || newLabOrder?.patientEmail || patient?.email || "";
+  const patientName = newRx?.patientName || newLabOrder?.patientName || patient?.name || "Patient";
 
   console.log("[PRESCRIPTION] Submission started:", {
     patientId,
@@ -3575,65 +3575,46 @@ const handleSavePrescription = async (newRx, newLabOrder) => {
 
   try {
     if (newRx) {
-      const savedRx = await pushToCloud(
-        "/prescriptions",
-        "POST",
-        newRx
-      );
-
+      const savedRx = await pushToCloud("/prescriptions", "POST", newRx);
       if (!savedRx.ok) {
         toast.error("Prescription cloud save failed.");
-        return;
+        return false;
       }
-
-      setPrescriptions(prev => [newRx, ...prev]);
-
+      setPrescriptions(prev => [newRx, ...prev.filter(item => item.id !== newRx.id)]);
+      await sendSmartNotification(newRx.patientId, newRx.patientEmail || patientEmail, patientName, "ORDER", newRx.id);
     }
 
     if (newLabOrder) {
-      const savedLab = await pushToCloud(
-        "/lab-orders",
-        "POST",
-        newLabOrder
-      );
-
+      const savedLab = await pushToCloud("/lab-orders", "POST", newLabOrder);
       if (!savedLab.ok) {
         toast.error("Lab order cloud save failed.");
-        return;
+        return false;
       }
-
-      setLabOrders(prev => [newLabOrder, ...prev]);
-
+      setLabOrders(prev => [newLabOrder, ...prev.filter(item => item.id !== newLabOrder.id)]);
+      await sendSmartNotification(newLabOrder.patientId, newLabOrder.patientEmail || patientEmail, patientName, "ORDER", newLabOrder.id);
     }
 
     console.log("[PRESCRIPTION] Processing completed.");
-
+    toast.success("Clinical order saved successfully.");
+    return true;
   } catch (error) {
     console.error("[PRESCRIPTION] Processing error:", error);
     toast.error("Unable to complete clinical submission.");
+    return false;
   }
 };
 
-const handleBookAppointment = (newAppointment, isWebPaid = false) => { 
-    const finalAppointment = { 
-      ...newAppointment, 
-      // FIX: Revert to 'Pending Approval' for web bookings so receptionist can confirm
-      status: isWebPaid ? 'Pending Approval' : 'Scheduled' 
+const handleBookAppointment = (newAppointment) => {
+    // Patient bookings are requests until reception confirms them.
+    // Do not create a PAID invoice here: no payment gateway is connected.
+    const finalAppointment = {
+      ...newAppointment,
+      status: 'Pending Approval'
     };
-    setAppointments(prev => [...prev, finalAppointment]); 
-    setIsBookingModalOpen(false); 
+    setAppointments(prev => [...prev, finalAppointment]);
+    setIsBookingModalOpen(false);
     pushToCloud('/appointments', 'POST', finalAppointment);
-
-    if (isWebPaid) {
-      const feeInvoice = {
-        id: `INV-FEE-${Math.floor(Math.random() * 9000) + 1000}`,
-        patientId: newAppointment.patientId, patientName: newAppointment.patientName,
-        consultationFee: 500, labTotal: 0, pharmacyTotal: 0, subtotal: 500, gstAmount: 90, advancePaid: 0, totalAmount: 590, 
-        status: 'PAID', date: newAppointment.date, services: 'Online Booking Consultation Fee'
-      };
-      setInvoices(prev => [feeInvoice, ...prev]); pushToCloud('/invoices', 'POST', feeInvoice);
-    }
-  }; 
+  };
   const handleApproveWebRequest = (aptId) => {
     const targetApt = appointments.find(a => a.id === aptId);
     if (!targetApt) return;
@@ -3730,14 +3711,6 @@ const handleCompleteApt = (aptId) => {
       }
     }
 
-    const targetOrderExists = duesType === 'rx'
-      ? prescriptions.some(item => item.id === itemId)
-      : labOrders.some(item => item.id === itemId);
-    if (!targetOrderExists) {
-      toast.error("The selected department order could not be found.");
-      return;
-    }
-
     const newInvoice = {
       id: `INV-${duesType.toUpperCase()}-${Math.floor(Math.random() * 9000) + 1000}`,
       patientId: patientId, patientName: patientName, consultationFee: 0,
@@ -3748,6 +3721,8 @@ const handleCompleteApt = (aptId) => {
       services: dynamicServices // Explicitly binds the dynamic string
     };
     
+    setInvoices(prev => [newInvoice, ...prev]);
+
 const invoiceSaved = await pushToCloud(
   '/invoices',
   'POST',
@@ -3758,29 +3733,20 @@ if (!invoiceSaved?.ok) {
   toast.error("Invoice could not be saved on the server.");
   return;
 }
-    setInvoices(prev => [newInvoice, ...prev]);
 
     if (duesType === 'rx') {
       const target = prescriptions.find(r => r.id === itemId);
       if (target) {
         const updated = { ...target, status: 'PAID' }; 
-        const orderSaved = await pushToCloud(`/prescriptions/${itemId}`, 'PUT', updated);
-        if (!orderSaved?.ok) {
-          toast.error("Prescription payment update failed.");
-          return;
-        }
         setPrescriptions(prev => prev.map(r => r.id === itemId ? updated : r));
+        await pushToCloud(`/prescriptions/${itemId}`, 'PUT', updated);
       }
     } else {
       const target = labOrders.find(l => l.id === itemId);
       if (target) {
         const updated = { ...target, status: 'PAID' }; 
-        const orderSaved = await pushToCloud(`/lab-orders/${itemId}`, 'PUT', updated);
-        if (!orderSaved?.ok) {
-          toast.error("Laboratory payment update failed.");
-          return;
-        }
         setLabOrders(prev => prev.map(l => l.id === itemId ? updated : l));
+        await pushToCloud(`/lab-orders/${itemId}`, 'PUT', updated);
       }
     }
 const patient = patients.find(
@@ -3800,27 +3766,11 @@ await sendSmartNotification(
 const handlePatientConfirmApt = (aptId) => {
     const targetApt = appointments.find(a => a.id === aptId);
     if (!targetApt) return;
-    
-    const updatedApt = { ...targetApt, status: 'Scheduled (Paid)' };
+
+    // Patient acceptance confirms the appointment time, not payment.
+    const updatedApt = { ...targetApt, status: 'Scheduled' };
     setAppointments(prev => prev.map(a => a.id === aptId ? updatedApt : a));
     pushToCloud(`/appointments/${aptId}`, 'PUT', updatedApt);
-
-    // FIX: Automatically generate the official invoice receipt for web payments!
-    const existingInvoice = invoices.find(i => i.patientId === targetApt.patientId && i.date === targetApt.date && i.services.includes('Consultation'));
-    
-    if (!existingInvoice) {
-      const feeInvoice = {
-        id: `INV-WEB-${Math.floor(Math.random() * 9000) + 1000}`,
-        patientId: targetApt.patientId, 
-        patientName: targetApt.patientName,
-        consultationFee: 500, labTotal: 0, pharmacyTotal: 0, 
-        subtotal: 500, gstAmount: 90, advancePaid: 0, totalAmount: 590, 
-        status: 'PAID', date: targetApt.date, 
-        services: 'Online Booking Consultation Fee'
-      };
-      setInvoices(prev => [feeInvoice, ...prev]); 
-      pushToCloud('/invoices', 'POST', feeInvoice);
-    }
   };
   const handlePatientRescheduleApt = (aptId, newDetails) => {
     const targetApt = appointments.find(a => a.id === aptId);
@@ -3929,7 +3879,7 @@ const handleSaveLabReport = async (labData) => {
     await sendSmartNotification(
       targetOrder.patientId,
       targetOrder.patientEmail || patient?.email || "",
-      targetOrder.patientName || patient?.name,
+      targetOrder.patientName || patient?.name || "Patient",
       "REPORT",
       targetOrder.testName || orderId
     );
@@ -3980,7 +3930,7 @@ const handleCreateInvoice = async (newInvoice) => {
       newInvoice.patientId,
       patientEmail,
       newInvoice.patientName || patient?.name,
-      "PAYMENT",
+      "INVOICE",
       newInvoice.id
     );
 
@@ -4005,6 +3955,8 @@ const handleCreateInvoice = async (newInvoice) => {
     const targetInv = invoices.find(inv => inv.id === paymentId);
     if (targetInv) {
       const updatedInv = { ...targetInv, status: 'PAID' };
+      setInvoices(prev => prev.map(inv => inv.id === paymentId ? updatedInv : inv));
+      setPayInvoice(null);
       const paymentSaved = await pushToCloud(
     `/invoices/${paymentId}`,
     "PUT",
@@ -4015,43 +3967,34 @@ if (!paymentSaved?.ok) {
     toast.error("Payment update failed on the server.");
     return;
 }
-      setInvoices(prev => prev.map(inv => inv.id === paymentId ? updatedInv : inv));
-      setPayInvoice(null);
 
 const patient = patients.find(
     p => p.id === targetInv.patientId
+);
+
+await sendSmartNotification(
+    targetInv.patientId,
+    patient?.email || "",
+    targetInv.patientName || patient?.name || "Patient",
+    "PAYMENT",
+    targetInv.id
 );
 
       // Await the auto-unlocks
       for (const rx of prescriptions) {
         if (rx.patientId === targetInv.patientId && rx.status === 'PENDING') {
           const updatedRx = { ...rx, status: 'PAID' };
-          const rxSaved = await pushToCloud(`/prescriptions/${rx.id}`, 'PUT', updatedRx);
-          if (!rxSaved?.ok) {
-            toast.error("A prescription could not be unlocked on the server.");
-            return;
-          }
           setPrescriptions(prev => prev.map(r => r.id === rx.id ? updatedRx : r));
+          await pushToCloud(`/prescriptions/${rx.id}`, 'PUT', updatedRx);
         }
       }
       for (const lab of labOrders) {
         if (lab.patientId === targetInv.patientId && lab.status === 'PENDING') {
           const updatedLab = { ...lab, status: 'PAID' };
-          const labSaved = await pushToCloud(`/lab-orders/${lab.id}`, 'PUT', updatedLab);
-          if (!labSaved?.ok) {
-            toast.error("A laboratory order could not be unlocked on the server.");
-            return;
-          }
           setLabOrders(prev => prev.map(l => l.id === lab.id ? updatedLab : l));
+          await pushToCloud(`/lab-orders/${lab.id}`, 'PUT', updatedLab);
         }
       }
-      await sendSmartNotification(
-        targetInv.patientId,
-        patient?.email || "",
-        targetInv.patientName || patient?.name || "Patient",
-        "PAYMENT",
-        targetInv.id
-      );
       toast.success("Payment Successful! Associated orders unlocked.");
     }
   };
