@@ -2775,9 +2775,9 @@ const LaboratoryModule = ({ patients, labOrders, labReports, invoices, onSaveLab
     setForm({ patientId: order.patientId, testName: order.testName });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const selectedPatient = patients.find(p => p.id === form.patientId);
+    const selectedPatient = patients.find(p => String(p.id) === String(form.patientId));
     const reportedDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     let resultString = '';
     if (activeOrder.testName === 'CBC') { resultString = `Hb: ${form.hb || '--'} g/dL | WBC: ${form.wbc || '--'} cells/mcL | Plt: ${form.plt || '--'} lakhs | RBC: ${form.rbc || '--'} mil/mcL | HCT: ${form.hct || '--'}% | MCV: ${form.mcv || '--'} fL | Neutro: ${form.neutrophils || '--'}% | Lympho: ${form.lymphocytes || '--'}%`; } 
@@ -2786,8 +2786,14 @@ const LaboratoryModule = ({ patients, labOrders, labReports, invoices, onSaveLab
     else if (activeOrder.testName === 'URINE') { resultString = `Color: ${form.color || '--'} | pH: ${form.ph || '--'} | SG: ${form.sg || '--'} | Glucose: ${form.glucose || '--'} | Protein: ${form.protein || '--'} | Ketones: ${form.ketones || '--'}`; } 
     else if (activeOrder.testName === 'XRAY') { resultString = `Impression:\n${form.impression || 'Normal'}`; }
 
-    onSaveLabReport({ id: `LAB-${Math.floor(Math.random() * 10000)}`, orderId: activeOrder.id, patientName: selectedPatient ? selectedPatient.name : 'Unknown', patientId: form.patientId, testName: activeOrder.testName, reportType: activeOrder.testName, result: resultString, status: 'COMPLETED', reported: reportedDate });
-    toast.success("Lab report completed and saved!"); setActiveOrder(null); setForm({});
+    const saved = await onSaveLabReport({ id: `LAB-${Math.floor(Math.random() * 10000)}`, orderId: activeOrder.id, patientName: selectedPatient ? selectedPatient.name : 'Unknown', patientId: form.patientId, testName: activeOrder.testName, reportType: activeOrder.testName, result: resultString, status: 'COMPLETED', reported: reportedDate });
+    if (saved) {
+      toast.success("Lab report completed and saved!");
+      setActiveOrder(null);
+      setForm({});
+    } else {
+      toast.error("Lab report could not be saved. Please check the server and try again.");
+    }
   };
 
   // NEW: Dedicated Print Engine for the Laboratorist Desk
@@ -3390,7 +3396,8 @@ const sendSmartNotification = async (
   patientEmail,
   patientName,
   type,
-  refId
+  refId,
+  amount = null
 ) => {
   const normalizedEmail = patientEmail?.trim();
 
@@ -3411,6 +3418,7 @@ const sendSmartNotification = async (
   const subject =
     type === "PAYMENT" ? `CarePoint Payment Confirmation: ${refId}` :
     type === "INVOICE" ? `CarePoint Invoice Generated: ${refId}` :
+    type === "DUE" ? `CarePoint Payment Due: ${refId}` :
     type === "ORDER" ? `CarePoint Medical Order Received: ${refId}` :
     `CarePoint Lab Report Available: ${refId}`;
 
@@ -3443,6 +3451,7 @@ const sendSmartNotification = async (
         ${
           type === "PAYMENT" ? `Your payment for invoice ${refId} has been recorded successfully.` :
           type === "INVOICE" ? `Your invoice ${refId} has been generated and is available in the CarePoint portal.` :
+          type === "DUE" ? `A payment is pending for your medical order ${refId}. Please sign in to the CarePoint patient portal and review the pending amount${Number.isFinite(Number(amount)) ? ` of ₹${Number(amount).toLocaleString('en-IN')} (including applicable GST)` : ''}. If you have already paid, please contact the billing desk.` :
           type === "ORDER" ? `Your prescription or laboratory order ${refId} has been received by CarePoint.` :
           `Your diagnostic report ${refId} is now available.`
         }
@@ -3458,7 +3467,7 @@ const sendSmartNotification = async (
             border-radius:8px;
             font-weight:bold;
           ">
-          View ${type === "PAYMENT" ? "Payment Details" : type === "INVOICE" ? "Invoice" : type === "ORDER" ? "Medical Order" : "Lab Report"}
+          View ${type === "PAYMENT" || type === "DUE" ? "Billing & Dues" : type === "INVOICE" ? "Invoice" : type === "ORDER" ? "Medical Order" : "Lab Report"}
         </a>
       </div>
 
@@ -3582,6 +3591,8 @@ const handleSavePrescription = async (newRx, newLabOrder) => {
       }
       setPrescriptions(prev => [newRx, ...prev.filter(item => item.id !== newRx.id)]);
       await sendSmartNotification(newRx.patientId, newRx.patientEmail || patientEmail, patientName, "ORDER", newRx.id);
+      // Prescription assignment creates an actionable pharmacy due in the patient portal.
+      await sendSmartNotification(newRx.patientId, newRx.patientEmail || patientEmail, patientName, "DUE", newRx.id, 350 * 1.18);
     }
 
     if (newLabOrder) {
@@ -3592,6 +3603,9 @@ const handleSavePrescription = async (newRx, newLabOrder) => {
       }
       setLabOrders(prev => [newLabOrder, ...prev.filter(item => item.id !== newLabOrder.id)]);
       await sendSmartNotification(newLabOrder.patientId, newLabOrder.patientEmail || patientEmail, patientName, "ORDER", newLabOrder.id);
+      // Lab assignment creates an actionable diagnostics due in the patient portal.
+      const labBaseAmount = Number(labTestPrices?.[newLabOrder.testName] || 500);
+      await sendSmartNotification(newLabOrder.patientId, newLabOrder.patientEmail || patientEmail, patientName, "DUE", newLabOrder.id, labBaseAmount * 1.18);
     }
 
     console.log("[PRESCRIPTION] Processing completed.");
@@ -3604,17 +3618,26 @@ const handleSavePrescription = async (newRx, newLabOrder) => {
   }
 };
 
-const handleBookAppointment = (newAppointment) => {
-    // Patient bookings are requests until reception confirms them.
-    // Do not create a PAID invoice here: no payment gateway is connected.
-    const finalAppointment = {
-      ...newAppointment,
-      status: 'Pending Approval'
+const handleBookAppointment = (newAppointment, isWebPaid = false) => { 
+    const finalAppointment = { 
+      ...newAppointment, 
+      // FIX: Revert to 'Pending Approval' for web bookings so receptionist can confirm
+      status: isWebPaid ? 'Pending Approval' : 'Scheduled' 
     };
-    setAppointments(prev => [...prev, finalAppointment]);
-    setIsBookingModalOpen(false);
+    setAppointments(prev => [...prev, finalAppointment]); 
+    setIsBookingModalOpen(false); 
     pushToCloud('/appointments', 'POST', finalAppointment);
-  };
+
+    if (isWebPaid) {
+      const feeInvoice = {
+        id: `INV-FEE-${Math.floor(Math.random() * 9000) + 1000}`,
+        patientId: newAppointment.patientId, patientName: newAppointment.patientName,
+        consultationFee: 500, labTotal: 0, pharmacyTotal: 0, subtotal: 500, gstAmount: 90, advancePaid: 0, totalAmount: 590, 
+        status: 'PAID', date: newAppointment.date, services: 'Online Booking Consultation Fee'
+      };
+      setInvoices(prev => [feeInvoice, ...prev]); pushToCloud('/invoices', 'POST', feeInvoice);
+    }
+  }; 
   const handleApproveWebRequest = (aptId) => {
     const targetApt = appointments.find(a => a.id === aptId);
     if (!targetApt) return;
@@ -3766,11 +3789,27 @@ await sendSmartNotification(
 const handlePatientConfirmApt = (aptId) => {
     const targetApt = appointments.find(a => a.id === aptId);
     if (!targetApt) return;
-
-    // Patient acceptance confirms the appointment time, not payment.
-    const updatedApt = { ...targetApt, status: 'Scheduled' };
+    
+    const updatedApt = { ...targetApt, status: 'Scheduled (Paid)' };
     setAppointments(prev => prev.map(a => a.id === aptId ? updatedApt : a));
     pushToCloud(`/appointments/${aptId}`, 'PUT', updatedApt);
+
+    // FIX: Automatically generate the official invoice receipt for web payments!
+    const existingInvoice = invoices.find(i => i.patientId === targetApt.patientId && i.date === targetApt.date && i.services.includes('Consultation'));
+    
+    if (!existingInvoice) {
+      const feeInvoice = {
+        id: `INV-WEB-${Math.floor(Math.random() * 9000) + 1000}`,
+        patientId: targetApt.patientId, 
+        patientName: targetApt.patientName,
+        consultationFee: 500, labTotal: 0, pharmacyTotal: 0, 
+        subtotal: 500, gstAmount: 90, advancePaid: 0, totalAmount: 590, 
+        status: 'PAID', date: targetApt.date, 
+        services: 'Online Booking Consultation Fee'
+      };
+      setInvoices(prev => [feeInvoice, ...prev]); 
+      pushToCloud('/invoices', 'POST', feeInvoice);
+    }
   };
   const handlePatientRescheduleApt = (aptId, newDetails) => {
     const targetApt = appointments.find(a => a.id === aptId);
@@ -3827,12 +3866,13 @@ const handleSaveLabReport = async (labData) => {
   const orderId = labData.orderId;
 
   const targetOrder = labOrders.find(
-    order => order.id === orderId
+    order => String(order.id) === String(orderId)
   );
 
   if (!targetOrder) {
     console.error("[LAB] Order not found:", orderId);
-    return;
+    toast.error("The original lab order could not be found.");
+    return false;
   }
 
   const patient = patients.find(
@@ -3864,7 +3904,7 @@ const handleSaveLabReport = async (labData) => {
 
     if (!saved.ok) {
       toast.error("Unable to save lab report.");
-      return;
+      return false;
     }
 
     setLabOrders(prev =>
@@ -3881,11 +3921,14 @@ const handleSaveLabReport = async (labData) => {
       targetOrder.patientEmail || patient?.email || "",
       targetOrder.patientName || patient?.name || "Patient",
       "REPORT",
-      targetOrder.testName || orderId
+      labData.id || orderId
     );
+    return true;
 
   } catch (error) {
     console.error("[LAB] Report processing failed:", error);
+    toast.error("Lab report processing failed.");
+    return false;
   }
 };
   
