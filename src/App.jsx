@@ -3489,7 +3489,8 @@ const sendSmartNotification = async (
     console.log("[EMAIL] Posting notification request:", {
       endpoint: "/api/notify/email",
       patientId,
-      type,
+      notificationType: type,
+      subject,
       refId
     });
     const response = await fetch(
@@ -3503,6 +3504,7 @@ const sendSmartNotification = async (
     body: JSON.stringify({
       patientId,
       email: normalizedEmail || undefined,
+      notificationType: type,
       subject,
       htmlMessage
     })
@@ -3513,7 +3515,9 @@ const sendSmartNotification = async (
     console.log("[EMAIL] Notification endpoint response:", {
       status: response.status,
       ok: response.ok,
-      requestId: data.requestId || null
+      requestId: data.requestId || null,
+      notificationType: data.notificationType || type,
+      subject: data.subject || subject
     });
 
     if (!response.ok || !data.success) {
@@ -3529,6 +3533,9 @@ const sendSmartNotification = async (
 
     console.log("[EMAIL] Gmail notification accepted:", {
       patientId,
+      notificationType: data.notificationType || type,
+      subject: data.subject || subject,
+      refId,
       messageId: data.messageId
     });
 
