@@ -3489,8 +3489,7 @@ const sendSmartNotification = async (
     console.log("[EMAIL] Posting notification request:", {
       endpoint: "/api/notify/email",
       patientId,
-      notificationType: type,
-      subject,
+      type,
       refId
     });
     const response = await fetch(
@@ -3504,7 +3503,6 @@ const sendSmartNotification = async (
     body: JSON.stringify({
       patientId,
       email: normalizedEmail || undefined,
-      notificationType: type,
       subject,
       htmlMessage
     })
@@ -3515,9 +3513,7 @@ const sendSmartNotification = async (
     console.log("[EMAIL] Notification endpoint response:", {
       status: response.status,
       ok: response.ok,
-      requestId: data.requestId || null,
-      notificationType: data.notificationType || type,
-      subject: data.subject || subject
+      requestId: data.requestId || null
     });
 
     if (!response.ok || !data.success) {
@@ -3533,9 +3529,6 @@ const sendSmartNotification = async (
 
     console.log("[EMAIL] Gmail notification accepted:", {
       patientId,
-      notificationType: data.notificationType || type,
-      subject: data.subject || subject,
-      refId,
       messageId: data.messageId
     });
 
@@ -3724,6 +3717,13 @@ const handleCompleteApt = (aptId) => {
   const handleClearDepartmentDues = async (patientId, duesType, itemId, amount) => {
     const patientName = patients.find(p => p.id === patientId)?.name || 'Unknown Patient';
     const numAmount = parseFloat(amount) || 0;
+    const testModeTotal = Math.round(numAmount * 1.18);
+
+    // This is a simulated payment for testing only; no real money is collected.
+    const confirmed = window.confirm(
+      `TEST PAYMENT\n\nConfirm payment for ${duesType === 'rx' ? 'pharmacy order' : 'laboratory test'} ${itemId}?\n\nAmount: ₹${testModeTotal.toLocaleString('en-IN')} (including 18% GST)\n\nNo real money will be charged. Confirm to mark this item as PAID in CarePoint.`
+    );
+    if (!confirmed) return false;
     
     // DYNAMIC LAB/MEDICINE NAME EXTRACTION (FIXED)
     let dynamicServices = duesType === 'rx' ? 'Pharmacy Medicines (Pre-paid)' : 'Laboratory Tests (Pre-paid)';
@@ -3751,8 +3751,6 @@ const handleCompleteApt = (aptId) => {
       services: dynamicServices // Explicitly binds the dynamic string
     };
     
-    setInvoices(prev => [newInvoice, ...prev]);
-
 const invoiceSaved = await pushToCloud(
   '/invoices',
   'POST',
@@ -3760,9 +3758,11 @@ const invoiceSaved = await pushToCloud(
 );
 
 if (!invoiceSaved?.ok) {
-  toast.error("Invoice could not be saved on the server.");
-  return;
+  toast.error("Invoice could not be saved on the server. The item remains unpaid.");
+  return false;
 }
+
+    setInvoices(prev => [newInvoice, ...prev]);
 
     if (duesType === 'rx') {
       const target = prescriptions.find(r => r.id === itemId);
@@ -3790,7 +3790,8 @@ await sendSmartNotification(
     "PAYMENT",
     newInvoice.id
 );
-    toast.success(`${duesType === 'rx' ? 'Pharmacy' : 'Lab'} dues cleared!`);
+    toast.success(`Test payment recorded: ${duesType === 'rx' ? 'Pharmacy' : 'Lab'} dues marked PAID. No real money was charged.`);
+    return true;
   };
 
 const handlePatientConfirmApt = (aptId) => {
@@ -4004,6 +4005,14 @@ const handleCreateInvoice = async (newInvoice) => {
 
     const targetInv = invoices.find(inv => inv.id === paymentId);
     if (targetInv) {
+      if (targetInv.status === 'PAID') {
+        toast('This invoice is already marked as paid.');
+        return;
+      }
+      const confirmed = window.confirm(
+        `TEST PAYMENT\n\nConfirm payment for invoice ${targetInv.id}?\n\nAmount: ₹${Number(targetInv.totalAmount || 0).toLocaleString('en-IN')}\n\nNo real money will be charged. Confirm to mark this invoice as PAID in CarePoint.`
+      );
+      if (!confirmed) return;
       const updatedInv = { ...targetInv, status: 'PAID' };
       setInvoices(prev => prev.map(inv => inv.id === paymentId ? updatedInv : inv));
       setPayInvoice(null);
@@ -4045,7 +4054,7 @@ await sendSmartNotification(
           await pushToCloud(`/lab-orders/${lab.id}`, 'PUT', updatedLab);
         }
       }
-      toast.success("Payment Successful! Associated orders unlocked.");
+      toast.success("Test payment recorded. Invoice marked PAID and associated orders unlocked. No real money was charged.");
     }
   };
 

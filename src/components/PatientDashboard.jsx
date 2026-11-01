@@ -90,6 +90,7 @@ const [showNotifs, setShowNotifs] = useState(false);
   // Active / Pending Items
   const pendingRxs = myPrescriptions.filter(rx => rx.status === 'PENDING');
   const pendingLabs = myLabOrders.filter(lab => lab.status === 'PENDING');
+  const pendingInvoices = myInvoices.filter(inv => String(inv.status || '').toUpperCase() === 'PENDING');
   const activeAppointments = myAppointments.filter(a => a.status !== 'Completed');
 
   // History Items
@@ -116,11 +117,28 @@ const [showNotifs, setShowNotifs] = useState(false);
       .sort((a, b) => a.sortDate - b.sortDate);
   }, [pastLabReports]);
 
-  // IMPORTANT: the current parent callback directly marks dues as PAID in the
-  // database. It does not collect money through a payment gateway, so do not
-  // invoke it from this patient-facing "online payment" action.
-  const handleOnlinePayment = () => {
-    toast.error('Online payment is not connected yet. No payment has been taken. Please contact the billing desk.');
+  // TEST MODE: browser confirmation records a simulated payment only.
+  // No payment gateway is connected and no real money is collected here.
+  const handleOnlinePayment = async (duesType, itemId, amount) => {
+    try {
+      if (duesType === 'invoice') {
+        if (typeof onPayOnline !== 'function') {
+          toast.error('Payment action is currently unavailable.');
+          return;
+        }
+        await onPayOnline(itemId);
+        return;
+      }
+
+      if (typeof onClearDues !== 'function') {
+        toast.error('Payment action is currently unavailable.');
+        return;
+      }
+      await onClearDues(currentUser?.id, duesType, itemId, amount);
+    } catch (error) {
+      console.error('[PATIENT] Test payment failed:', error);
+      toast.error('Could not record the test payment. Please try again.');
+    }
   };
 
   const handleBookingSubmit = async (e) => {
@@ -259,14 +277,32 @@ const [showNotifs, setShowNotifs] = useState(false);
             {/* COLUMN 1: PENDING DUES */}
             <div>
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 px-2 md:text-sm">Pending Actionable Dues</h3>
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">Online payment is not configured yet. Please contact the billing desk; this portal will not mark an item paid without a verified payment.</p>
+              <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-4">Test mode: confirm in your browser to record a simulated payment. No real money will be charged.</p>
               
-              {pendingRxs.length === 0 && pendingLabs.length === 0 && (
+              {pendingRxs.length === 0 && pendingLabs.length === 0 && pendingInvoices.length === 0 && (
                 <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center shadow-sm">
                   <CheckCircle className="mx-auto text-emerald-400 mb-3" size={32} />
                   <p className="text-gray-500 text-sm font-medium">You have no pending payments.</p>
                 </div>
               )}
+
+              {pendingInvoices.map(inv => (
+                <div key={inv.id} className="bg-white border-2 border-indigo-200 rounded-2xl p-6 mb-4 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <div className="font-bold text-indigo-700 mb-1 text-lg">Invoice Payment</div>
+                      <p className="text-xs text-gray-500">Invoice Ref: {inv.id}</p>
+                      <p className="text-xs text-gray-600 mt-1">{inv.services || 'Medical services'}</p>
+                    </div>
+                    <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-1 rounded-md">UNPAID</span>
+                  </div>
+                  <p className="text-2xl font-extrabold text-gray-900 mb-4">₹{Number(inv.totalAmount || 0).toLocaleString('en-IN')}</p>
+                  <button onClick={() => handleOnlinePayment('invoice', inv.id, inv.totalAmount)} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition shadow-sm cursor-pointer md:text-lg">
+                    Confirm Test Payment
+                  </button>
+                </div>
+              ))}
 
               {pendingRxs.map(rx => (
                 <div key={rx.id} className="bg-white border-2 border-amber-200 rounded-2xl p-6 mb-4 shadow-sm relative overflow-hidden transition hover:shadow-md">
@@ -283,8 +319,8 @@ const [showNotifs, setShowNotifs] = useState(false);
                   <p className="text-sm font-medium text-gray-800 mb-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
                     {rx.medications?.length || 0} medications prescribed. Pay online to forward to pharmacy desk.
                   </p>
-                  <button onClick={handleOnlinePayment} className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3.5 rounded-xl transition shadow-sm cursor-pointer md:text-lg">
-                    Online Payment Unavailable
+                  <button onClick={() => handleOnlinePayment('rx', rx.id, 350)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl transition shadow-sm cursor-pointer md:text-lg">
+                    Confirm Test Payment · ₹{Math.round(350 * 1.18).toLocaleString('en-IN')} (incl. GST)
                   </button>
                 </div>
               ))}
@@ -306,8 +342,8 @@ const [showNotifs, setShowNotifs] = useState(false);
                     <p className="text-sm font-medium text-gray-800 mb-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
                       Lab test assigned. Pay online to unlock processing at diagnostics desk.
                     </p>
-                    <button onClick={handleOnlinePayment} className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3.5 rounded-xl transition shadow-sm cursor-pointer md:text-lg">
-                      Online Payment Unavailable
+                    <button onClick={() => handleOnlinePayment('lab', lab.id, cost)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl transition shadow-sm cursor-pointer md:text-lg">
+                      Confirm Test Payment · ₹{Math.round(cost * 1.18).toLocaleString('en-IN')} (incl. GST)
                     </button>
                   </div>
                 )
