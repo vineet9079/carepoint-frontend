@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import './index.css';
 import Chatbot from './components/Chatbot';
 import Sidebar from './components/Sidebar';
 import PatientDashboard from './components/PatientDashboard';
+import AmbientExperience from './components/AmbientExperience';
 import { HashRouter as Router, Routes, Route, useNavigate, Navigate, useLocation, Link, Outlet } from 'react-router-dom';
 import { 
   Users, Pill, FlaskConical, Receipt, Shield, 
   Activity, Clock, Zap, Plus, ArrowRight, IndianRupee, LayoutGrid, X, 
   Search, Send, Bot, AlertTriangle, Printer, QrCode, Edit3, TrendingUp, 
   AlertCircle, CheckCircle2, FileText, Trash2, Bell, Settings, HelpCircle, Wifi, WifiOff, LogOut,
-  User, Lock, ShieldAlert, ArrowLeft, ChevronUp, Eye, EyeOff
+  User, Lock, ShieldAlert, ArrowLeft, ChevronUp, Eye, EyeOff, Menu
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
@@ -420,7 +422,7 @@ const HelpModal = ({ isOpen, onClose, onSendTicket }) => {
             placeholder="Describe your issue or request here..." 
             required 
           />
-          <button type="submit" className="w-full px-5 py-2.5 bg-[#4355B9] text-white rounded-lg text-sm font-bold flex justify-center items-center gap-2 hover:bg-indigo-700 transition">
+          <button type="submit" className="w-full px-5 py-2.5 bg-[#176f68] text-white rounded-lg text-sm font-bold flex justify-center items-center gap-2 hover:bg-indigo-700 transition">
             <Send size={16} /> Submit to Admin
           </button>
         </form>
@@ -552,9 +554,9 @@ const handleRegisterPatient = (e) => {
     onLogin(newPatient);    
   };
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 relative overflow-hidden">
-      <div className="w-full max-w-[420px] bg-white rounded-[24px] shadow-2xl relative z-10 overflow-hidden border border-gray-100">
-        <div className="bg-indigo-600 p-8 text-center relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 relative overflow-hidden cp-login-page">
+      <div className="w-full max-w-[420px] bg-white rounded-[24px] shadow-2xl relative z-10 overflow-hidden border border-gray-100 cp-login-card">
+        <div className="bg-indigo-600 p-8 text-center relative overflow-hidden cp-login-banner">
           <div className="relative z-10 flex flex-col items-center">
             <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-4 shadow-lg"><Activity className="text-indigo-600" size={32} /></div>
             <h1 className="text-2xl font-black text-white tracking-tight">CarePoint HMS</h1>
@@ -651,7 +653,7 @@ const handleRegisterPatient = (e) => {
 // ==========================================
 // 7. CORE SHELL (Header)
 // ==========================================
-function Header({ user, onLogout, isOnline, notifications, onDismissNotification, onOpenCompose }) {
+function Header({ user, onLogout, isOnline, notifications, onDismissNotification, onOpenCompose, onToggleSidebar }) {
   const [showPopup, setShowPopup] = React.useState(false);
   const prevCountRef = React.useRef(notifications?.length || 0);
 
@@ -667,8 +669,9 @@ function Header({ user, onLogout, isOnline, notifications, onDismissNotification
   }, [notifications]);
 
   return (
-    <header className="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center z-10 relative">
-      <div className="flex items-center gap-4">
+    <header className="cp-topbar">
+      <div className="flex items-center gap-3">
+        <button type="button" className="cp-menu-toggle" onClick={onToggleSidebar} aria-label="Toggle navigation menu" title="Menu"><Menu size={21}/></button>
         <h2 className="text-xl font-bold text-gray-800">Dashboard</h2>
         {!isOnline && <span className="bg-amber-100 text-amber-700 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5"><div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></div>Offline Mode</span>}
       </div>
@@ -799,7 +802,7 @@ const MessageComposerModal = ({ isOpen, onClose, currentUser, patients, onSubmit
           </div>
           <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
             <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-semibold text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition">Cancel</button>
-            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#4355B9] text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2">
+            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#176f68] text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2">
               <Send size={14} /> Send Message
             </button>
           </div>
@@ -855,7 +858,7 @@ const RegisterPatientModal = ({ isOpen, onClose, onSubmit, nextId }) => {
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-semibold text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition">Cancel</button>
-            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#4355B9] text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2">Register patient <ArrowRight size={14} /></button>
+            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#176f68] text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2">Register patient <ArrowRight size={14} /></button>
           </div>
         </form>
       </div>
@@ -1068,7 +1071,7 @@ const BookAppointmentModal = ({ isOpen, onClose, onSubmit, patients, staff, appo
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-semibold text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition">Cancel</button>
-            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#4355B9] text-white rounded-lg hover:bg-indigo-700">Book appointment</button>
+            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#176f68] text-white rounded-lg hover:bg-indigo-700">Book appointment</button>
           </div>
         </form>
       </div>
@@ -1239,7 +1242,7 @@ const EditPrescriptionModal = ({ isOpen, onClose, prescription, onSubmit }) => {
             <button type="button" onClick={handleAddMedication} className="text-sm font-semibold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition">
               + Add Another Medicine
             </button>
-            <button type="submit" className="px-6 py-2.5 text-sm font-semibold bg-[#4355B9] text-white rounded-lg hover:bg-indigo-700 transition">
+            <button type="submit" className="px-6 py-2.5 text-sm font-semibold bg-[#176f68] text-white rounded-lg hover:bg-indigo-700 transition">
               Save Changes
             </button>
           </div>
@@ -1304,7 +1307,7 @@ const AddStockModal = ({ isOpen, onClose, onSubmit }) => {
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-semibold text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition">Cancel</button>
-            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#4355B9] text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2">
+            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#176f68] text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2">
               Add to inventory <ArrowRight size={14} />
             </button>
           </div>
@@ -1380,7 +1383,7 @@ const EditStockModal = ({ isOpen, onClose, stockItem, onSubmit }) => {
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-semibold text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition">Cancel</button>
-            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#4355B9] text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2">
+            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#176f68] text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2">
               Save Updates <ArrowRight size={14} />
             </button>
           </div>
@@ -1642,7 +1645,7 @@ function CreateInvoiceModal({ isOpen, onClose, patients, prescriptions, labOrder
           </div>
           <div className="flex justify-end gap-3">
             <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg cursor-pointer">Cancel</button>
-            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#4355B9] text-white rounded-lg cursor-pointer">Save Pending Bill</button>
+            <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-[#176f68] text-white rounded-lg cursor-pointer">Save Pending Bill</button>
           </div>
         </form>
       </div>
@@ -1821,6 +1824,25 @@ function EditStaffModal({ isOpen, onClose, member, onSubmit }) {
 // ==========================================
 // 9. DESK MODULES: CORE VIEWS
 // ==========================================
+const AnimatedMetric = ({ value, prefix = '', suffix = '' }) => {
+  const target = Number(value) || 0;
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    let frame;
+    const start = performance.now();
+    const duration = 1050;
+    const tick = (now) => {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(target * eased));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [target]);
+  return <>{prefix}{display.toLocaleString('en-IN')}{suffix}</>;
+};
+
 const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount, totalRevenue, onOpenModal, prescriptions, labOrders, invoices, inventory }) => {
   const lowStockCount = inventory.filter(i => i.quantity < 50).length;
   const pendingLabs = labOrders.filter(o => o.status === 'PENDING').length;
@@ -1869,32 +1891,48 @@ const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount,
   }, [appointments]);
 
   return (
-    <div className="max-w-6xl mx-auto pb-10">
-      <div className="mb-8 flex justify-between items-end">
+    <div className="max-w-6xl mx-auto pb-10 cp-page cp-overview-page">
+      <div className="mb-8 flex justify-between items-end cp-page-heading">
         <div>
           <p className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-1">Operations Dashboard</p>
           <h2 className="text-3xl font-bold text-gray-900 tracking-tight">System Overview</h2>
         </div>
         {['admin', 'receptionist'].includes(user?.role?.toLowerCase()) && (
-          <button onClick={onOpenModal} className="bg-[#4355B9] hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition cursor-pointer">
+          <button onClick={onOpenModal} className="bg-[#176f68] hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition cursor-pointer">
             <Plus size={16} /> Register patient
           </button>
         )}
       </div>
+
+      <section className="cp-command-hero" aria-label="Hospital operations highlight">
+        <img className="cp-command-photo" src="https://images.unsplash.com/photo-1586773860418-d37222d8fce3?auto=format&fit=crop&w=1500&q=85" alt="Modern hospital corridor" loading="eager" />
+        <div className="cp-command-shade" />
+        <div className="cp-command-content">
+          <div className="cp-command-kicker"><span className="cp-live-dot" /> CAREPOINT OPERATIONS</div>
+          <h3>Better coordination.<br/><em>Better care.</em></h3>
+          <p>Your hospital at a glance. Keep today's patient journey moving with clear operational visibility.</p>
+          <div className="cp-command-actions">
+            <button type="button" onClick={onOpenModal}><Plus size={15}/> Register a patient</button>
+            <span><Shield size={15}/> Secure clinical workspace</span>
+          </div>
+        </div>
+        <div className="cp-hero-side-note"><span>LIVE OVERVIEW</span><strong>{appointments.length.toLocaleString('en-IN')}</strong><small>appointments in the system</small></div>
+        <div className="cp-hero-orbit cp-hero-orbit-one"/><div className="cp-hero-orbit cp-hero-orbit-two"/>
+      </section>
       
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-4 gap-4 mb-6 cp-stat-grid">
         {[
           { label: 'ACTIVE PATIENTS', value: patientCount, sub: 'Registered in DB', icon: Users, alert: false, color: 'text-indigo-600' },
           { label: "TODAY'S FLOW", value: appointments.length, sub: 'Appointments scheduled', icon: Activity, alert: false, color: 'text-emerald-600' },
           { label: 'PENDING ORDERS', value: pendingPrescriptionsCount + pendingLabs, sub: 'Requires processing', icon: Clock, alert: (pendingPrescriptionsCount + pendingLabs) > 0, color: 'text-amber-500' },
           { label: 'MONTHLY REVENUE', value: `₹${totalRevenue.toLocaleString()}`, sub: 'Collections verified', icon: IndianRupee, alert: false, color: 'text-blue-600' }
         ].map((s, i) => (
-          <div key={i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:shadow-md transition">
+          <div key={i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:shadow-md transition cp-stat-card">
             <div className="flex justify-between items-start">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{s.label}</span>
               <s.icon size={16} className={`${s.color} opacity-80`} />
             </div>
-            <div className="text-3xl font-black text-gray-900 my-2 tracking-tight">{s.value}</div>
+            <div className="text-3xl font-black text-gray-900 my-2 tracking-tight">{i === 3 ? s.value : <AnimatedMetric value={s.value} />}</div>
             <div className={`text-[10px] font-bold flex items-center gap-1.5 ${s.alert ? 'text-amber-500' : 'text-gray-400'}`}>
               {s.alert && <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>}
               {s.sub}
@@ -1903,24 +1941,24 @@ const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount,
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      <div className="grid grid-cols-2 gap-6 mb-6 cp-chart-grid">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 cp-panel">
           <h3 className="text-sm font-bold text-gray-900 mb-6 flex items-center gap-2"><TrendingUp size={16} className="text-indigo-600"/> 7-Day Revenue Trend</h3>
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={revenueData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                <defs><linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4355B9" stopOpacity={0.3}/><stop offset="95%" stopColor="#4355B9" stopOpacity={0}/></linearGradient></defs>
+                <defs><linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#176f68" stopOpacity={0.3}/><stop offset="95%" stopColor="#176f68" stopOpacity={0}/></linearGradient></defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9ca3af' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9ca3af' }} />
                 <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Area type="monotone" dataKey="revenue" stroke="#4355B9" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
+                <Area type="monotone" dataKey="revenue" stroke="#176f68" strokeWidth={3} fillOpacity={1} fill="url(#colorRev)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 cp-panel">
           <h3 className="text-sm font-bold text-gray-900 mb-6 flex items-center gap-2"><Activity size={16} className="text-emerald-600"/> Patient Flow (Today)</h3>
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
@@ -1929,14 +1967,14 @@ const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount,
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9ca3af' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9ca3af' }} />
                 <Tooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Bar dataKey="patients" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="patients" fill="#278b7f" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-3 gap-6 cp-overview-lower">
         <div className="col-span-1 space-y-6">
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <h3 className="text-sm font-bold text-gray-900 mb-6 flex items-center gap-2"><TrendingUp size={16} className="text-indigo-600"/> Department Load</h3>
@@ -2033,7 +2071,7 @@ const PatientsDirectory = ({ user, patients, appointments, onOpenModal, onViewPa
   const displayPatients = activeTab === 'unbooked' ? unbookedPatients : searchedPatients;
 
   return (
-    <div className="max-w-6xl mx-auto pb-10">
+    <div className="max-w-6xl mx-auto pb-10 cp-page cp-module-page">
       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">RECORDS</p>
       <div className="flex justify-between items-end mb-8">
         <div>
@@ -2041,7 +2079,7 @@ const PatientsDirectory = ({ user, patients, appointments, onOpenModal, onViewPa
           <p className="text-gray-500 text-sm mt-1">Manage hospital records and web registrations.</p>
         </div>
         {isReceptionist && (
-          <button onClick={onOpenModal} className="bg-[#4355B9] hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition cursor-pointer">
+          <button onClick={onOpenModal} className="bg-[#176f68] hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition cursor-pointer">
             <Plus size={16} /> Register New Patient
           </button>
         )}
@@ -2122,7 +2160,7 @@ const AppointmentsModule = ({ currentUser, appointments, onOpenBookingModal, onA
   const displayQueue = activeTab === 'live' ? liveQueue : historyQueue;
 
   return (
-    <div className="max-w-6xl mx-auto pb-10">
+    <div className="max-w-6xl mx-auto pb-10 cp-page cp-module-page">
       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">SCHEDULE & QUEUE</p>
       <div className="flex justify-between items-end mb-8">
         <div>
@@ -2130,7 +2168,7 @@ const AppointmentsModule = ({ currentUser, appointments, onOpenBookingModal, onA
           <p className="text-gray-500 text-sm mt-1">Manage web requests and live hospital queue.</p>
         </div>
         {!isDoctor && (
-          <button onClick={onOpenBookingModal} className="bg-[#4355B9] hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition cursor-pointer">
+          <button onClick={onOpenBookingModal} className="bg-[#176f68] hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition cursor-pointer">
             <Plus size={16} /> Book appointment
           </button>
         )}
@@ -2267,12 +2305,12 @@ const PrescriptionsModule = ({ currentUser, patients, appointments = [], prescri
           <title>Prescription - ${rx.id}</title>
           <style>
             body { font-family: 'Arial', sans-serif; padding: 40px; color: #111; line-height: 1.5; }
-            .header { border-bottom: 2px solid #4355B9; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; }
-            .logo-sec h1 { margin: 0; color: #4355B9; font-size: 24px; }
+            .header { border-bottom: 2px solid #176f68; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; }
+            .logo-sec h1 { margin: 0; color: #176f68; font-size: 24px; }
             .details-grid { display: flex; justify-content: space-between; background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 30px;}
             .table { width: 100%; border-collapse: collapse; margin-top: 10px; }
             .table th { background-color: #f3f4f6; text-transform: uppercase; font-size: 12px; padding: 12px; text-align: left; }
-            .rx-symbol { font-size: 36px; font-weight: bold; margin-bottom: 10px; color: #4355B9; }
+            .rx-symbol { font-size: 36px; font-weight: bold; margin-bottom: 10px; color: #176f68; }
             .footer { margin-top: 80px; display: flex; justify-content: space-between; }
             .signature { border-top: 1px solid #000; padding-top: 5px; width: 200px; text-align: center; }
           </style>
@@ -2497,7 +2535,7 @@ const handleSubmit = async (e) => {
           </div>
           <div className="flex justify-between items-center pt-4 border-t border-gray-100">
             <button type="button" onClick={handleManualDischarge} className="px-5 py-2.5 text-sm font-semibold text-red-600 bg-red-50 rounded-lg cursor-pointer hover:bg-red-100 transition">Discharge (No Rx Needed)</button>
-            <button type="submit" className="px-6 py-2.5 text-sm font-semibold bg-[#4355B9] text-white rounded-lg cursor-pointer hover:bg-indigo-700 transition">Save Official Order</button>
+            <button type="submit" className="px-6 py-2.5 text-sm font-semibold bg-[#176f68] text-white rounded-lg cursor-pointer hover:bg-indigo-700 transition">Save Official Order</button>
           </div>
         </form>
       </div>
@@ -2573,8 +2611,8 @@ const DoctorLabResults = ({ patients, labReports, onOpenPrint }) => {
           <title>Lab Report - ${lab.id}</title>
           <style>
             body { font-family: 'Arial', sans-serif; padding: 40px; color: #111; line-height: 1.5; }
-            .header { text-align: center; border-bottom: 2px solid #4355B9; padding-bottom: 20px; margin-bottom: 30px; }
-            .header h1 { margin: 0; color: #4355B9; font-size: 26px; font-weight: 900; }
+            .header { text-align: center; border-bottom: 2px solid #176f68; padding-bottom: 20px; margin-bottom: 30px; }
+            .header h1 { margin: 0; color: #176f68; font-size: 26px; font-weight: 900; }
             .details-grid { display: flex; justify-content: space-between; border: 1px solid #e5e7eb; padding: 20px; border-radius: 8px; margin-bottom: 30px;}
             .report-title { text-align: center; margin: 30px 0; font-size: 22px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; color: #111;}
             .content-box { border: 1px solid #e5e7eb; padding: 30px; border-radius: 8px; min-height: 250px; font-size: 15px; }
@@ -2601,7 +2639,7 @@ const DoctorLabResults = ({ patients, labReports, onOpenPrint }) => {
     setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
   }; 
   return (
-    <div className="max-w-6xl mx-auto pb-10">
+    <div className="max-w-6xl mx-auto pb-10 cp-page cp-module-page">
       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">DOCTOR WORKSPACE</p>
       <div className="mb-6"><h2 className="text-3xl font-bold text-gray-900 tracking-tight">Patient Lab Results</h2></div>
       
@@ -2669,11 +2707,11 @@ const PharmacyModule = ({ prescriptions, inventory, invoices, onOpenStockModal, 
   const displayRxs = activeTab === 'queue' ? queueRxs : historyRxs;
 
   return (
-    <div className="max-w-6xl mx-auto pb-10">
+    <div className="max-w-6xl mx-auto pb-10 cp-page cp-module-page">
       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">PHARMACY DESK</p>
       <div className="flex justify-between items-end mb-8">
         <div><h2 className="text-3xl font-bold text-gray-900 tracking-tight">Pharmacy</h2></div>
-        <button onClick={onOpenStockModal} className="bg-[#4355B9] hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition flex items-center gap-2 cursor-pointer">+ Add stock</button>
+        <button onClick={onOpenStockModal} className="bg-[#176f68] hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition flex items-center gap-2 cursor-pointer">+ Add stock</button>
       </div>
       
       {lowStockCount > 0 && (
@@ -2812,8 +2850,8 @@ const LaboratoryModule = ({ patients, labOrders, labReports, invoices, onSaveLab
           <title>Lab Report - ${lab.id}</title>
           <style>
             body { font-family: 'Arial', sans-serif; padding: 40px; color: #111; line-height: 1.5; }
-            .header { text-align: center; border-bottom: 2px solid #4355B9; padding-bottom: 20px; margin-bottom: 30px; }
-            .header h1 { margin: 0; color: #4355B9; font-size: 26px; font-weight: 900; }
+            .header { text-align: center; border-bottom: 2px solid #176f68; padding-bottom: 20px; margin-bottom: 30px; }
+            .header h1 { margin: 0; color: #176f68; font-size: 26px; font-weight: 900; }
             .details-grid { display: flex; justify-content: space-between; border: 1px solid #e5e7eb; padding: 20px; border-radius: 8px; margin-bottom: 30px;}
             .report-title { text-align: center; margin: 30px 0; font-size: 22px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; color: #111;}
             .content-box { border: 1px solid #e5e7eb; padding: 30px; border-radius: 8px; min-height: 250px; font-size: 15px; }
@@ -2841,7 +2879,7 @@ const LaboratoryModule = ({ patients, labOrders, labReports, invoices, onSaveLab
   };
 
   return (
-    <div className="max-w-6xl mx-auto pb-10">
+    <div className="max-w-6xl mx-auto pb-10 cp-page cp-module-page">
       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">DIAGNOSTICS DESK</p>
       <div className="mb-6"><h2 className="text-3xl font-bold text-gray-900 tracking-tight">Laboratory Test Processing</h2></div>
       
@@ -2923,7 +2961,7 @@ const LaboratoryModule = ({ patients, labOrders, labReports, invoices, onSaveLab
                 )}
 
                 <div className="flex justify-end pt-4 border-t border-gray-100">
-                  <button type="submit" className="px-6 py-2.5 text-sm font-semibold bg-[#4355B9] text-white rounded-lg cursor-pointer hover:bg-indigo-700 transition">Generate Official Report</button>
+                  <button type="submit" className="px-6 py-2.5 text-sm font-semibold bg-[#176f68] text-white rounded-lg cursor-pointer hover:bg-indigo-700 transition">Generate Official Report</button>
                 </div>
               </form>            )}
           </div>
@@ -2983,7 +3021,7 @@ const BillingModule = ({ invoices, prescriptions, labOrders, patients, onClearDu
           <style>
             body { font-family: 'Arial', sans-serif; padding: 40px; color: #111; line-height: 1.5; }
             .header { text-align: center; border-bottom: 2px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 30px; }
-            .logo { font-size: 28px; font-weight: 900; color: #4355B9; letter-spacing: -0.5px; }
+            .logo { font-size: 28px; font-weight: 900; color: #176f68; letter-spacing: -0.5px; }
             .subtitle { font-size: 14px; color: #6b7280; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
             .details-grid { display: flex; justify-content: space-between; margin-bottom: 40px; font-size: 14px; }
             .details-box { background: #f9fafb; padding: 15px; border-radius: 8px; width: 45%; }
@@ -3042,14 +3080,14 @@ const BillingModule = ({ invoices, prescriptions, labOrders, patients, onClearDu
   const historyInvoices = invoices.filter(inv => (inv.patientName || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
-    <div className="max-w-6xl mx-auto pb-10">
+    <div className="max-w-6xl mx-auto pb-10 cp-page cp-module-page">
       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">FINANCIALS</p>
       <div className="mb-8 flex justify-between items-end">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Billing & Payments</h2>
           <p className="text-gray-500 text-sm mt-1">Collect pending department dues and view invoice history.</p>
         </div>
-        <button onClick={onOpenInvoiceModal} className="bg-[#4355B9] hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition cursor-pointer">
+        <button onClick={onOpenInvoiceModal} className="bg-[#176f68] hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-sm flex items-center gap-2 transition cursor-pointer">
           + Create Invoice
         </button>
       </div>
@@ -3151,7 +3189,34 @@ function StaffModule({ staff, onOpenStaffModal, onOpenEditModal, onDeleteStaff }
 // ==========================================
 // 10. MAIN APP COMPONENT & ROUTER
 // ==========================================
+function ModuleVisualStage() {
+  const location = useLocation();
+  const route = location.pathname;
+  const modules = {
+    '/patients': { title: 'Patient care', eyebrow: 'PATIENT SERVICES', description: 'Patient records, care journeys and clinical context.', image: 'photo-1551076805-e1869033e561', position: 'center 40%' },
+    '/appointments': { title: 'Appointments', eyebrow: 'SCHEDULING DESK', description: 'Coordinate consultations and keep every visit moving.', image: 'photo-1519494026892-80bbd2d6fd0d', position: 'center 45%' },
+    '/prescriptions': { title: 'Clinical prescriptions', eyebrow: 'DOCTOR WORKSPACE', description: 'Treatment plans and medication orders in one place.', image: 'photo-1584982751601-97dcc096659c', position: 'center 40%' },
+    '/lab-results': { title: 'Diagnostic results', eyebrow: 'CLINICAL DIAGNOSTICS', description: 'Review reports and bring test insights into care.', image: 'photo-1579154204601-01588f351e67', position: 'center 45%' },
+    '/laboratory': { title: 'Laboratory operations', eyebrow: 'LAB WORKSPACE', description: 'Track samples, test processing and completed reports.', image: 'photo-1582719471384-894fbb16e074', position: 'center 42%' },
+    '/pharmacy': { title: 'Pharmacy', eyebrow: 'MEDICATION SERVICES', description: 'Manage prescriptions, inventory and dispensing.', image: 'photo-1585435557343-3b092031a831', position: 'center 45%' },
+    '/billing': { title: 'Billing & invoices', eyebrow: 'FINANCE WORKSPACE', description: 'Payments, invoices and outstanding balances.', image: 'photo-1554224155-6726b3ff858f', position: 'center 50%' },
+    '/patient-portal': { title: 'Your care, in one place', eyebrow: 'PATIENT PORTAL', description: 'Appointments, reports and updates for your care journey.', image: 'photo-1576091160550-2173dba999ef', position: 'center 42%' },
+    '/staff': { title: 'Staff workspace', eyebrow: 'PEOPLE & OPERATIONS', description: 'Keep teams, roles and hospital operations connected.', image: 'photo-1573496359142-b8d87734a5a2', position: 'center 35%' }
+  };
+  const data = modules[route];
+  return <>
+    {data && <section className="cp-module-visual" key={route} style={{'--module-photo': `url(https://images.unsplash.com/${data.image}?auto=format&fit=crop&w=1500&q=82)`, '--module-position': data.position}}>
+      <div className="cp-module-visual-shade" />
+      <div className="cp-module-visual-content"><span>{data.eyebrow}</span><h2>{data.title}</h2><p>{data.description}</p></div>
+      <div className="cp-module-visual-glass"><i/><span>CAREPOINT / LIVE WORKSPACE</span><strong>Care, connected.</strong></div>
+      <div className="cp-module-visual-sweep" />
+    </section>}
+    <div className="cp-route-stage" key={`${route}-stage`}><Outlet /></div>
+  </>;
+}
+
 export default function App() {
+const [sidebarOpen, setSidebarOpen] = useState(false);
 const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('user');
@@ -3441,7 +3506,7 @@ const sendSmartNotification = async (
       border: 1px solid #e5e7eb;
       border-radius: 12px;
     ">
-      <h2 style="color: #4355B9;">
+      <h2 style="color: #176f68;">
         CarePoint Health Network
       </h2>
 
@@ -3460,7 +3525,7 @@ const sendSmartNotification = async (
       <div style="text-align:center;margin:30px 0;">
         <a href="${secureLink}"
           style="
-            background:#4355B9;
+            background:#176f68;
             color:white;
             padding:14px 24px;
             text-decoration:none;
@@ -3717,13 +3782,6 @@ const handleCompleteApt = (aptId) => {
   const handleClearDepartmentDues = async (patientId, duesType, itemId, amount) => {
     const patientName = patients.find(p => p.id === patientId)?.name || 'Unknown Patient';
     const numAmount = parseFloat(amount) || 0;
-    const testModeTotal = Math.round(numAmount * 1.18);
-
-    // This is a simulated payment for testing only; no real money is collected.
-    const confirmed = window.confirm(
-      `TEST PAYMENT\n\nConfirm payment for ${duesType === 'rx' ? 'pharmacy order' : 'laboratory test'} ${itemId}?\n\nAmount: ₹${testModeTotal.toLocaleString('en-IN')} (including 18% GST)\n\nNo real money will be charged. Confirm to mark this item as PAID in CarePoint.`
-    );
-    if (!confirmed) return false;
     
     // DYNAMIC LAB/MEDICINE NAME EXTRACTION (FIXED)
     let dynamicServices = duesType === 'rx' ? 'Pharmacy Medicines (Pre-paid)' : 'Laboratory Tests (Pre-paid)';
@@ -3751,6 +3809,8 @@ const handleCompleteApt = (aptId) => {
       services: dynamicServices // Explicitly binds the dynamic string
     };
     
+    setInvoices(prev => [newInvoice, ...prev]);
+
 const invoiceSaved = await pushToCloud(
   '/invoices',
   'POST',
@@ -3758,11 +3818,9 @@ const invoiceSaved = await pushToCloud(
 );
 
 if (!invoiceSaved?.ok) {
-  toast.error("Invoice could not be saved on the server. The item remains unpaid.");
-  return false;
+  toast.error("Invoice could not be saved on the server.");
+  return;
 }
-
-    setInvoices(prev => [newInvoice, ...prev]);
 
     if (duesType === 'rx') {
       const target = prescriptions.find(r => r.id === itemId);
@@ -3790,8 +3848,7 @@ await sendSmartNotification(
     "PAYMENT",
     newInvoice.id
 );
-    toast.success(`Test payment recorded: ${duesType === 'rx' ? 'Pharmacy' : 'Lab'} dues marked PAID. No real money was charged.`);
-    return true;
+    toast.success(`${duesType === 'rx' ? 'Pharmacy' : 'Lab'} dues cleared!`);
   };
 
 const handlePatientConfirmApt = (aptId) => {
@@ -4005,14 +4062,6 @@ const handleCreateInvoice = async (newInvoice) => {
 
     const targetInv = invoices.find(inv => inv.id === paymentId);
     if (targetInv) {
-      if (targetInv.status === 'PAID') {
-        toast('This invoice is already marked as paid.');
-        return;
-      }
-      const confirmed = window.confirm(
-        `TEST PAYMENT\n\nConfirm payment for invoice ${targetInv.id}?\n\nAmount: ₹${Number(targetInv.totalAmount || 0).toLocaleString('en-IN')}\n\nNo real money will be charged. Confirm to mark this invoice as PAID in CarePoint.`
-      );
-      if (!confirmed) return;
       const updatedInv = { ...targetInv, status: 'PAID' };
       setInvoices(prev => prev.map(inv => inv.id === paymentId ? updatedInv : inv));
       setPayInvoice(null);
@@ -4054,7 +4103,7 @@ await sendSmartNotification(
           await pushToCloud(`/lab-orders/${lab.id}`, 'PUT', updatedLab);
         }
       }
-      toast.success("Test payment recorded. Invoice marked PAID and associated orders unlocked. No real money was charged.");
+      toast.success("Payment Successful! Associated orders unlocked.");
     }
   };
 
@@ -4188,6 +4237,7 @@ useEffect(() => {
   }, [isOnline, user]);   
   return (
     <Router>
+      <AmbientExperience />
       <Toaster position="top-right" />
       <Routes>
         <Route path="/" element={<Navigate to={user ? getLandingPath(user.role) : '/login'} replace />} />
@@ -4195,24 +4245,25 @@ useEffect(() => {
         
        <Route element={
           user ? (
-            <div className="min-h-screen bg-[#F8FAFC] flex font-sans">
+            <div className="cp-app-shell">
               {user.role !== 'patient' && (
-                <div className="hidden md:block"> {/* FIX: Hides sidebar on mobile screens */}
-                  <Sidebar user={user} patientCount={patients.length} pendingPrescriptionsCount={pendingRxCount} lowStockCount={inventory.filter(i => i.quantity < 50).length} labReportCount={labReports.length} onOpenSettings={() => setIsSettingsOpen(true)} onOpenHelp={() => setIsHelpOpen(true)} onLogout={handleLogout} />
+                <div>
+                  <div className={`cp-sidebar-backdrop ${sidebarOpen ? 'is-open' : ''}`} onClick={() => setSidebarOpen(false)} />
+                  <Sidebar user={user} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} patientCount={patients.length} pendingPrescriptionsCount={pendingRxCount} lowStockCount={inventory.filter(i => i.quantity < 50).length} labReportCount={labReports.length} onOpenSettings={() => setIsSettingsOpen(true)} onOpenHelp={() => setIsHelpOpen(true)} onLogout={handleLogout} />
                 </div>
               )}
               {/* FIX: Responsive width and margins for mobile staff portal */}
-              <div className={`flex-1 flex flex-col relative w-full print:ml-0 ${user.role !== 'patient' ? 'md:ml-[260px]' : ''}`}>
+              <div className={`flex-1 flex flex-col relative w-full print:ml-0`}>
                 {user.role !== 'patient' && (
-                  <Header user={user} onLogout={handleLogout} isOnline={isOnline} notifications={visibleNotifs} onDismissNotification={handleDismissNotification} onOpenCompose={() => setIsMessageModalOpen(true)} />
+                  <Header user={user} onLogout={handleLogout} isOnline={isOnline} notifications={visibleNotifs} onDismissNotification={handleDismissNotification} onOpenCompose={() => setIsMessageModalOpen(true)} onToggleSidebar={() => setSidebarOpen(v => !v)} />
                 )}
 
             {/* Global Message Composer */}
             <MessageComposerModal isOpen={isMessageModalOpen} onClose={() => setIsMessageModalOpen(false)} currentUser={user} patients={patients} onSubmit={handleSendNotification} />                
             
             {/* FIX: Changed p-8 to p-4 md:p-8 for better mobile spacing */}
-            <main className={`flex-1 overflow-y-auto w-full print:p-0 ${user.role === 'patient' ? 'p-0 bg-white' : 'p-4 md:p-8'}`}>
-              <Outlet />
+            <main className={`cp-main-content ${user.role === 'patient' ? 'cp-patient-main' : ''}`}>
+              <ModuleVisualStage />
             </main>
                 {user.role !== 'patient' && (
                   <Chatbot hospitalStats={hospitalStats} userRole={user?.role} />
