@@ -6,7 +6,7 @@ import PatientDashboard from './components/PatientDashboard';
 import AmbientExperience from './components/AmbientExperience';
 import { HashRouter as Router, Routes, Route, useNavigate, Navigate, useLocation, Link, Outlet } from 'react-router-dom';
 import { 
-  Users, Pill, FlaskConical, Receipt, Shield, 
+  Users, Pill, FlaskConical, Receipt, Shield, CalendarDays,
   Activity, Clock, Zap, Plus, ArrowRight, IndianRupee, LayoutGrid, X, 
   Search, Send, Bot, AlertTriangle, Printer, QrCode, Edit3, TrendingUp, 
   AlertCircle, CheckCircle2, FileText, Trash2, Bell, Settings, HelpCircle, Wifi, WifiOff, LogOut,
@@ -31,13 +31,11 @@ const getLandingPath = (role) => {
   switch ((role || '').toLowerCase()) {
     case 'patient': return '/patient-portal';
     case 'admin': return '/admin-dashboard';
-    case 'doctor': return '/prescriptions';
+    case 'doctor': return '/doctor-dashboard';
+    case 'receptionist': case 'reception': case 'front desk': return '/reception-dashboard';
     case 'pharmacist': return '/pharmacy';
     case 'laboratorist': return '/laboratory';
     case 'billing': return '/billing';
-    case 'receptionist': 
-    case 'reception': 
-    case 'front desk': return '/appointments';
     default: return '/login';
   }
 };
@@ -1843,10 +1841,16 @@ const AnimatedMetric = ({ value, prefix = '', suffix = '' }) => {
   return <>{prefix}{display.toLocaleString('en-IN')}{suffix}</>;
 };
 
-const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount, totalRevenue, onOpenModal, prescriptions, labOrders, invoices, inventory }) => {
+const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount, totalRevenue, onOpenModal, prescriptions, labOrders, labReports = [], invoices, inventory, lastCloudSync, initialSyncPending }) => {
   const lowStockCount = inventory.filter(i => i.quantity < 50).length;
   const pendingLabs = labOrders.filter(o => o.status === 'PENDING').length;
   const pendingBills = invoices.filter(i => i.status === 'PENDING').length;
+  const todayKey = getLocalDateStr();
+  const todayAppointments = appointments.filter(a => !a.date || String(a.date).startsWith(todayKey));
+  const currentMonthKey = todayKey.slice(0, 7);
+  const monthRevenue = invoices.filter(inv => inv.status === 'PAID' && inv.date && String(inv.date).startsWith(currentMonthKey)).reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
+  const completedToday = todayAppointments.filter(a => a.status === 'Completed').length;
+  const pendingApprovals = appointments.filter(a => a.status === 'Pending Approval').length;
 
   const revenueData = React.useMemo(() => {
     if (!invoices || invoices.length === 0) return [];
@@ -1894,7 +1898,7 @@ const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount,
     <div className="max-w-6xl mx-auto pb-10 cp-page cp-overview-page">
       <div className="mb-8 flex justify-between items-end cp-page-heading">
         <div>
-          <p className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-1">Operations Dashboard</p>
+          <p className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-1">Operations Dashboard · Auto-refresh every 10 sec</p><p className="cp-sync-caption">{lastCloudSync ? `Cloud data updated ${lastCloudSync.toLocaleTimeString('en-IN')}` : initialSyncPending ? 'Connecting to CarePoint cloud…' : 'Showing latest available data'}</p>{initialSyncPending && <div className="cp-loading-strip"><span/><span/><span/><em>Loading latest hospital activity</em></div>}
           <h2 className="text-3xl font-bold text-gray-900 tracking-tight">System Overview</h2>
         </div>
         {['admin', 'receptionist'].includes(user?.role?.toLowerCase()) && (
@@ -1922,10 +1926,10 @@ const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount,
       
       <div className="grid grid-cols-4 gap-4 mb-6 cp-stat-grid">
         {[
-          { label: 'ACTIVE PATIENTS', value: patientCount, sub: 'Registered in DB', icon: Users, alert: false, color: 'text-indigo-600' },
-          { label: "TODAY'S FLOW", value: appointments.length, sub: 'Appointments scheduled', icon: Activity, alert: false, color: 'text-emerald-600' },
+          { label: 'REGISTERED PATIENTS', value: patientCount, sub: 'Patient records in system', icon: Users, alert: false, color: 'text-indigo-600' },
+          { label: "TODAY'S APPOINTMENTS", value: todayAppointments.length, sub: `${completedToday} completed today`, icon: Activity, alert: false, color: 'text-emerald-600' },
           { label: 'PENDING ORDERS', value: pendingPrescriptionsCount + pendingLabs, sub: 'Requires processing', icon: Clock, alert: (pendingPrescriptionsCount + pendingLabs) > 0, color: 'text-amber-500' },
-          { label: 'MONTHLY REVENUE', value: `₹${totalRevenue.toLocaleString()}`, sub: 'Collections verified', icon: IndianRupee, alert: false, color: 'text-blue-600' }
+          { label: 'MONTHLY REVENUE', value: `₹${monthRevenue.toLocaleString('en-IN')}`, sub: 'Paid invoices this month', icon: IndianRupee, alert: false, color: 'text-blue-600' }
         ].map((s, i) => (
           <div key={i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:shadow-md transition cp-stat-card">
             <div className="flex justify-between items-start">
@@ -1976,8 +1980,22 @@ const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount,
 
       <div className="grid grid-cols-3 gap-6 cp-overview-lower">
         <div className="col-span-1 space-y-6">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 cp-panel">
+            <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2"><Activity size={16} className="text-emerald-600"/> Clinical throughput</h3>
+            <div className="space-y-4">
+              {[
+                { label: 'Lab reports completed', value: labReports.length, total: Math.max(labOrders.length, labReports.length, 1), color: '#176f68' },
+                { label: 'Prescriptions fulfilled', value: prescriptions.filter(x => x.status === 'FULFILLED').length, total: Math.max(prescriptions.length, 1), color: '#6c9b91' },
+                { label: 'Visits completed today', value: completedToday, total: Math.max(todayAppointments.length, 1), color: '#d39a58' }
+              ].map(item => <div key={item.label}>
+                <div className="flex justify-between gap-3 text-xs mb-1.5"><span className="text-gray-600">{item.label}</span><strong className="text-gray-800">{item.value}</strong></div>
+                <div className="h-2 rounded-full bg-gray-100 overflow-hidden"><div className="h-full rounded-full cp-throughput-bar" style={{width:`${Math.min(100, (item.value / item.total) * 100)}%`, background:item.color}} /></div>
+              </div>)}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-4">Based on recorded orders and completed workflows; not a clinical interpretation of test values.</p>
+          </div>
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-            <h3 className="text-sm font-bold text-gray-900 mb-6 flex items-center gap-2"><TrendingUp size={16} className="text-indigo-600"/> Department Load</h3>
+            <h3 className="text-sm font-bold text-gray-900 mb-6 flex items-center gap-2"><TrendingUp size={16} className="text-emerald-600"/> Department Load</h3>
             <div className="mb-4">
               <div className="flex justify-between text-xs font-bold mb-1.5"><span className="text-gray-600">Pharmacy Queue</span><span className="text-amber-600">{pendingPrescriptionsCount} pending</span></div>
               <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden"><div className="bg-amber-500 h-2 rounded-full" style={{width: `${Math.min(pendingPrescriptionsCount * 15, 100)}%`}}></div></div>
@@ -2054,6 +2072,54 @@ const Overview = ({ user, patientCount, appointments, pendingPrescriptionsCount,
       </div>
     </div>
   );
+};
+
+const RoleDashboard = ({ user, appointments = [], patients = [], prescriptions = [], labOrders = [], labReports = [], invoices = [], inventory = [], onOpenBooking, getDynamicStatus, lastCloudSync, initialSyncPending }) => {
+  const role = (user?.role || '').toLowerCase();
+  const isDoctor = role === 'doctor';
+  const today = getLocalDateStr();
+  const identity = [user?.username, user?.name].filter(Boolean).map(x => String(x).toLowerCase());
+  const scopedAppointments = isDoctor ? appointments.filter(a => [a.doctorId, a.doctorName, a.doctor].some(v => v && identity.includes(String(v).toLowerCase()))) : appointments;
+  const todayAppointments = scopedAppointments.filter(a => !a.date || String(a.date).startsWith(today));
+  const pendingApprovals = appointments.filter(a => a.status === 'Pending Approval');
+  const waiting = todayAppointments.filter(a => ['Waiting for Doctor', 'Scheduled (Paid)'].includes(getDynamicStatus(a).text));
+  const pendingRx = prescriptions.filter(r => r.status === 'PENDING');
+  const pendingLab = labOrders.filter(l => l.status === 'PENDING');
+  const pendingBilling = invoices.filter(i => i.status === 'PENDING');
+  const weekly = React.useMemo(() => Array.from({length:7}, (_,i) => {
+    const d = new Date(); d.setDate(d.getDate() - (6-i));
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    return { day: d.toLocaleDateString('en-IN',{weekday:'short'}), visits: scopedAppointments.filter(a => a.date && String(a.date).startsWith(key)).length };
+  }), [scopedAppointments]);
+  const metrics = isDoctor ? [
+    {label:"TODAY'S CONSULTS", value:todayAppointments.length, note:'Appointments on your schedule', icon:CalendarDays},
+    {label:'ACTIVE PRESCRIPTIONS', value:pendingRx.length, note:'Awaiting pharmacy workflow', icon:Pill},
+    {label:'LAB REPORTS', value:labReports.length, note:'Reports available to review', icon:FlaskConical},
+    {label:'COMPLETED VISITS', value:todayAppointments.filter(a=>a.status==='Completed').length, note:'Completed today', icon:CheckCircle2}
+  ] : [
+    {label:"TODAY'S APPOINTMENTS", value:todayAppointments.length, note:'Scheduled for today', icon:CalendarDays},
+    {label:'BOOKING REQUESTS', value:pendingApprovals.length, note:'Awaiting confirmation', icon:Clock},
+    {label:'WAITING PATIENTS', value:waiting.length, note:'Ready for consultation', icon:Users},
+    {label:'PENDING BILLS', value:pendingBilling.length, note:'Require billing attention', icon:IndianRupee}
+  ];
+  const queue = [...todayAppointments].sort((a,b) => String(a.time||'').localeCompare(String(b.time||''))).slice(0,7);
+  return <div className="max-w-6xl mx-auto pb-10 cp-page cp-role-dashboard">
+    <div className="mb-7 flex flex-wrap items-end justify-between gap-4 cp-page-heading">
+      <div><p className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-1">{isDoctor ? 'CLINICAL WORKSPACE' : 'FRONT DESK WORKSPACE'} · AUTO-REFRESH 10 SEC</p><h2 className="text-3xl font-bold text-gray-900 tracking-tight">{isDoctor ? 'Doctor Dashboard' : 'Reception Dashboard'}</h2><p className="text-sm text-gray-500 mt-1">{isDoctor ? 'Your schedule, clinical workload and patient follow-through.' : 'A clear view of arrivals, booking requests and front-desk priorities.'}</p></div>
+      {!isDoctor && <button onClick={onOpenBooking} className="cp-role-primary"><Plus size={16}/> Book appointment</button>}
+    </div>
+    <div className="cp-sync-line"><span className={initialSyncPending ? 'is-syncing' : 'is-synced'} />{lastCloudSync ? `Cloud data updated ${lastCloudSync.toLocaleTimeString('en-IN')}` : initialSyncPending ? 'Connecting to CarePoint cloud…' : 'Showing latest available data'}</div>
+    {initialSyncPending && <div className="cp-loading-strip"><span/><span/><span/> <em>Loading the latest workspace data</em></div>}
+    <div className="grid grid-cols-4 gap-4 mb-6 cp-stat-grid">{metrics.map((m,i)=>{const Icon=m.icon;return <div key={m.label} className="cp-stat-card bg-white border rounded-2xl p-5"><div className="flex justify-between"><span className="text-[10px] font-bold tracking-widest text-gray-400">{m.label}</span><Icon size={17} className="text-emerald-700"/></div><strong className="block text-3xl mt-4 text-gray-900"><AnimatedMetric value={m.value}/></strong><span className="text-[10px] text-gray-500">{m.note}</span></div>})}</div>
+    <div className="grid grid-cols-3 gap-5 mb-6 cp-role-grid">
+      <section className="col-span-2 bg-white border border-gray-100 rounded-2xl p-5 cp-panel"><div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-900 text-sm">{isDoctor ? 'Your appointment volume' : 'Daily appointment volume'}</h3><span className="text-[10px] text-gray-400">Last 7 days</span></div><div className="h-56"><ResponsiveContainer width="100%" height="100%"><AreaChart data={weekly}><defs><linearGradient id="roleVisits" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#176f68" stopOpacity={.24}/><stop offset="100%" stopColor="#176f68" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#edf1f0"/><XAxis dataKey="day" axisLine={false} tickLine={false}/><YAxis allowDecimals={false} axisLine={false} tickLine={false}/><Tooltip/><Area type="monotone" dataKey="visits" stroke="#176f68" strokeWidth={2.5} fill="url(#roleVisits)"/></AreaChart></ResponsiveContainer></div></section>
+      <section className="bg-white border border-gray-100 rounded-2xl p-5 cp-panel"><h3 className="font-bold text-gray-900 text-sm mb-4">Priority queue</h3><div className="space-y-4">{(isDoctor ? [{label:'Prescriptions awaiting fulfilment',value:pendingRx.length,path:'/prescriptions'},{label:'Lab orders pending',value:pendingLab.length,path:'/lab-results'},{label:'Reports available',value:labReports.length,path:'/lab-results'}] : [{label:'Booking approvals',value:pendingApprovals.length,path:'/appointments'},{label:'Patients waiting',value:waiting.length,path:'/appointments'},{label:'Awaiting patient confirmation',value:appointments.filter(a=>a.status==='Awaiting Patient Confirmation').length,path:'/appointments'}]).map(item=><Link key={item.label} to={item.path} className="cp-priority-link"><span>{item.label}</span><strong>{item.value}<ArrowRight size={13}/></strong></Link>)}</div></section>
+    </div>
+    <section className="bg-white border border-gray-100 rounded-2xl overflow-hidden cp-panel"><div className="flex items-center justify-between gap-3 mb-4"><div><h3 className="font-bold text-gray-900 text-sm">{isDoctor ? "Today's patient schedule" : "Today's appointment desk"}</h3><p className="text-xs text-gray-500 mt-1">{queue.length} of {todayAppointments.length} appointments shown</p></div><Link to="/appointments" className="text-xs font-bold text-emerald-700">Open appointments <ArrowRight size={13} className="inline"/></Link></div>
+      {queue.length ? <div className="divide-y divide-gray-100">{queue.map(a=><div key={a.id} className="py-3 flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold text-sm text-gray-900">{a.patientName || 'Patient'}</p><p className="text-xs text-gray-500">{a.time || 'Time not set'} · {isDoctor ? (a.reason || 'Consultation') : (a.doctorName || a.doctor || 'Doctor not assigned')}</p></div><span className={`text-[10px] font-bold px-2.5 py-1 rounded-md ${getDynamicStatus(a).color}`}>{getDynamicStatus(a).text}</span></div>)}</div> : <div className="py-10 text-center text-sm text-gray-500">No appointments scheduled for today.</div>}
+    </section>
+    <div className="cp-role-shortcuts mt-5">{(isDoctor ? [{to:'/prescriptions',label:'Open prescriptions'},{to:'/lab-results',label:'Review lab results'},{to:'/patients',label:'Patient directory'}] : [{to:'/appointments',label:'Manage appointments'},{to:'/patients',label:'Patient directory'},{to:'/billing',label:'Billing desk'}]).map(x=><Link key={x.to} to={x.to}>{x.label}<ArrowRight size={14}/></Link>)}</div>
+  </div>;
 };
 
 const PatientsDirectory = ({ user, patients, appointments, onOpenModal, onViewPatient, onDeletePatient }) => {
@@ -2138,13 +2204,28 @@ const PatientsDirectory = ({ user, patients, appointments, onOpenModal, onViewPa
     </div>
   );
 };
-const AppointmentsModule = ({ currentUser, appointments, onOpenBookingModal, onApproveWebRequest, onOpenEditApt, onDeleteApt, onCheckIn, onComplete, getDynamicStatus }) => {
+const JourneyProgress = ({ status }) => {
+  const normalized = String(status || '').toLowerCase();
+  let active = 0;
+  if (normalized.includes('completed') || normalized.includes('discharged')) active = 4;
+  else if (normalized.includes('payment')) active = 3;
+  else if (normalized.includes('lab') || normalized.includes('pharmacy')) active = 2;
+  else if (normalized.includes('doctor') || normalized.includes('paid')) active = 1;
+  const steps = ['Booked', 'Consult', 'Care plan', 'Billing'];
+  return <div className="cp-journey" aria-label={`Patient journey: ${status}`}>
+    <div className="cp-journey-track">{steps.map((step, index) => <span key={step} className={index <= active ? 'is-done' : ''} />)}</div>
+    <span className="cp-journey-caption">{active === 4 ? 'Visit completed' : steps[Math.min(active, 3)] + ' stage'}</span>
+  </div>;
+};
+
+const AppointmentsModule = ({ currentUser, appointments, onOpenBookingModal, onApproveWebRequest, onOpenEditApt, onDeleteApt, onCheckIn, onComplete, getDynamicStatus, initialSyncPending = false }) => {
   const isDoctor = currentUser?.role?.toLowerCase() === 'doctor';
   const isReceptionist = ['admin', 'receptionist'].includes(currentUser?.role?.toLowerCase());
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('live'); 
 
-  const myAppointments = isDoctor ? appointments.filter(a => a.doctorId === currentUser?.username) : appointments;
+  const doctorIdentity = [currentUser?.username, currentUser?.name].filter(Boolean).map(x => String(x).toLowerCase());
+  const myAppointments = isDoctor ? appointments.filter(a => [a.doctorId, a.doctorName, a.doctor].some(v => v && doctorIdentity.includes(String(v).toLowerCase()))) : appointments;
 
   const processedAppointments = myAppointments.map(apt => ({
     ...apt,
@@ -2222,7 +2303,7 @@ const AppointmentsModule = ({ currentUser, appointments, onOpenBookingModal, onA
             </thead>
             <tbody className="text-sm">
               {displayQueue.length === 0 ? (
-                <tr><td colSpan={isReceptionist && activeTab === 'live' ? "5" : "4"} className="text-center py-12 text-gray-500 font-medium">{activeTab === 'live' ? 'No live appointments currently scheduled.' : 'No completed appointments found.'}</td></tr>
+                initialSyncPending ? <tr><td colSpan={isReceptionist && activeTab === 'live' ? "5" : "4"} className="py-10"><div className="cp-table-skeleton"><i/><i/><i/></div></td></tr> : <tr><td colSpan={isReceptionist && activeTab === 'live' ? "5" : "4"} className="text-center py-12 text-gray-500 font-medium">{activeTab === 'live' ? 'No live appointments currently scheduled.' : 'No completed appointments found.'}</td></tr>
               ) : (
                 displayQueue.map((apt) => (
                   <tr key={apt.id} className="border-b border-gray-50 hover:bg-gray-50/50">
@@ -2234,6 +2315,7 @@ const AppointmentsModule = ({ currentUser, appointments, onOpenBookingModal, onA
                     <td className="px-6 py-4 text-gray-600 text-xs">{apt.doctorName || apt.doctor}</td>
                     <td className="px-6 py-4">
                       <span className={`text-[10px] font-bold px-2.5 py-1 rounded-md ${apt.statusInfo.color}`}>{apt.statusInfo.text}</span>
+                      <JourneyProgress status={apt.statusInfo.text} />
                     </td>
                     {isReceptionist && activeTab === 'live' && (
                       <td className="px-6 py-4 text-right">
@@ -3193,6 +3275,8 @@ function ModuleVisualStage() {
   const location = useLocation();
   const route = location.pathname;
   const modules = {
+    '/doctor-dashboard': { title: 'Clinical command center', eyebrow: 'DOCTOR WORKSPACE', description: 'Your consultations, clinical workload and follow-through in one view.', image: 'photo-1612349317150-e413f6a5b16d', position: 'center 38%' },
+    '/reception-dashboard': { title: 'Patient coordination', eyebrow: 'FRONT DESK WORKSPACE', description: 'Keep arrivals, bookings and the daily queue moving smoothly.', image: 'photo-1551836022-d5d88e9218df', position: 'center 42%' },
     '/patients': { title: 'Patient care', eyebrow: 'PATIENT SERVICES', description: 'Patient records, care journeys and clinical context.', image: 'photo-1551076805-e1869033e561', position: 'center 40%' },
     '/appointments': { title: 'Appointments', eyebrow: 'SCHEDULING DESK', description: 'Coordinate consultations and keep every visit moving.', image: 'photo-1519494026892-80bbd2d6fd0d', position: 'center 45%' },
     '/prescriptions': { title: 'Clinical prescriptions', eyebrow: 'DOCTOR WORKSPACE', description: 'Treatment plans and medication orders in one place.', image: 'photo-1584982751601-97dcc096659c', position: 'center 40%' },
@@ -3222,7 +3306,9 @@ const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
     const saved = localStorage.getItem('user');
     return saved ? JSON.parse(saved) : null;
   }); 
-  const isOnline = useNetworkStatus(); 
+  const isOnline = useNetworkStatus();
+  const [initialSyncPending, setInitialSyncPending] = useState(true);
+  const [lastCloudSync, setLastCloudSync] = useState(null);
 
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
@@ -4171,10 +4257,10 @@ const handleLogout = () => {
 
 useEffect(() => {
     const syncCloudData = async () => {
-      if (!isOnline || !user) return;
+      if (!isOnline || !user) { if (!isOnline) setInitialSyncPending(false); return; }
       
       const token = localStorage.getItem('token');
-      if (!token) return;
+      if (!token) { setInitialSyncPending(false); return; }
 
       const baseUrl = 'https://carepoint-services.onrender.com/api';
       const headers = { 'Authorization': `Bearer ${token}` };
@@ -4199,7 +4285,8 @@ useEffect(() => {
           if (reports.ok) setLabReports(await reports.json());
           if (staffRes.ok) setStaff(await staffRes.json());
           if (notifRes && notifRes.ok) setNotifications(await notifRes.json()); // <-- ADD THIS
-          
+          if ([apt, rx, labs, inv, reports, staffRes, notifRes].some(response => response?.ok)) setLastCloudSync(new Date());
+          setInitialSyncPending(false);
           return;
         }
 
@@ -4225,9 +4312,12 @@ useEffect(() => {
         if (patRes.ok) setPatients(await patRes.json());
         if (notifRes && notifRes.ok) setNotifications(await notifRes.json());
         if (stockRes && stockRes.ok) setInventory(await stockRes.json());
+        if ([apt, rx, labs, inv, reports, staffRes, patRes, notifRes, stockRes].some(response => response?.ok)) setLastCloudSync(new Date());
+        setInitialSyncPending(false);
         
       } catch (err) {
         console.error("Cloud sync failed:", err);
+        setInitialSyncPending(false);
       }
     };
 
@@ -4238,7 +4328,7 @@ useEffect(() => {
   return (
     <Router>
       <AmbientExperience />
-      <Toaster position="top-right" />
+      <Toaster position="top-right" toastOptions={{ duration: 3600, style: { borderRadius: "12px", background: "#172323", color: "#fff", fontSize: "13px", boxShadow: "0 12px 32px rgba(18,42,39,.18)" }, success: { iconTheme: { primary: "#70c5ad", secondary: "#172323" } }, error: { iconTheme: { primary: "#f28b82", secondary: "#172323" } } }} />
       <Routes>
         <Route path="/" element={<Navigate to={user ? getLandingPath(user.role) : '/login'} replace />} />
         <Route path="/login" element={user ? <Navigate to={getLandingPath(user.role)} replace /> : <LoginScreen onLogin={setUser} staff={staff} patients={patients} onRegisterWebPatient={handleAddPatient} />} />        
@@ -4273,10 +4363,12 @@ useEffect(() => {
           ) : <Navigate to="/login" replace />
         }>
 <Route path="/patient-portal" element={<RoleGuard user={user} allowedRoles={['patient']}><PatientDashboard currentUser={user} appointments={appointments} prescriptions={prescriptions} labOrders={labOrders} labReports={labReports} invoices={invoices} staff={staff} labTestPrices={labTestPrices} onBookAppointment={handleBookAppointment} onClearDues={handleClearDepartmentDues} onPayOnline={(id) => executePayment(id)} onLogout={handleLogout} onConfirmApt={handlePatientConfirmApt} onRescheduleApt={handlePatientRescheduleApt} onPrintInvoice={(doc) => setPrintDoc({ type: 'INV', data: doc })} onPrintRx={(doc) => setPrintDoc({ type: 'RX', data: doc })} onPrintLab={(doc) => setPrintDoc({ type: 'LAB', data: doc })} onSendMessage={handleSendNotification} notifications={visibleNotifs} onDismissNotification={handleDismissNotification} onCompleteApt={handleCompleteApt} getDynamicStatus={getDynamicStatus} /></RoleGuard>} />
-          <Route path="/admin-dashboard" element={<RoleGuard user={user} allowedRoles={['admin', 'receptionist']}><Overview user={user} patientCount={patients.length} appointments={appointments} pendingPrescriptionsCount={pendingRxCount} totalRevenue={invoices.filter(inv => inv.status === 'PAID').reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0)} onOpenModal={() => setIsPatientModalOpen(true)} prescriptions={prescriptions} labOrders={labOrders} invoices={invoices} inventory={inventory} /></RoleGuard>} />
+          <Route path="/admin-dashboard" element={<RoleGuard user={user} allowedRoles={['admin']}><Overview user={user} patientCount={patients.length} appointments={appointments} pendingPrescriptionsCount={pendingRxCount} totalRevenue={invoices.filter(inv => inv.status === 'PAID').reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0)} onOpenModal={() => setIsPatientModalOpen(true)} prescriptions={prescriptions} labOrders={labOrders} labReports={labReports} invoices={invoices} inventory={inventory} lastCloudSync={lastCloudSync} initialSyncPending={initialSyncPending} /></RoleGuard>} />
+          <Route path="/doctor-dashboard" element={<RoleGuard user={user} allowedRoles={['doctor']}><RoleDashboard user={user} appointments={appointments} patients={patients} prescriptions={prescriptions} labOrders={labOrders} labReports={labReports} invoices={invoices} inventory={inventory} getDynamicStatus={getDynamicStatus} lastCloudSync={lastCloudSync} initialSyncPending={initialSyncPending} /></RoleGuard>} />
+          <Route path="/reception-dashboard" element={<RoleGuard user={user} allowedRoles={['receptionist']}><RoleDashboard user={user} appointments={appointments} patients={patients} prescriptions={prescriptions} labOrders={labOrders} labReports={labReports} invoices={invoices} inventory={inventory} getDynamicStatus={getDynamicStatus} lastCloudSync={lastCloudSync} initialSyncPending={initialSyncPending} onOpenBooking={() => setIsBookingModalOpen(true)} /></RoleGuard>} />
           <Route path="/patients" element={<RoleGuard user={user} allowedRoles={['admin', 'doctor', 'receptionist', 'laboratorist', 'billing', 'pharmacist']}><PatientsDirectory user={user} patients={patients} appointments={appointments} onOpenModal={() => setIsPatientModalOpen(true)} onViewPatient={(p) => setViewPatient(p)} onDeletePatient={handleDeletePatient} /></RoleGuard>} />
           
-        <Route path="/appointments" element={<RoleGuard user={user} allowedRoles={['admin', 'receptionist', 'doctor']}><AppointmentsModule currentUser={user} appointments={appointments} onOpenBookingModal={() => setIsBookingModalOpen(true)} onApproveWebRequest={handleApproveWebRequest} onOpenEditApt={(apt) => setEditingApt(apt)} onDeleteApt={handleDeleteAppointment} onCheckIn={handleCheckInPatient} onComplete={handleCompleteApt} getDynamicStatus={getDynamicStatus} /></RoleGuard>} />          
+        <Route path="/appointments" element={<RoleGuard user={user} allowedRoles={['admin', 'receptionist', 'doctor']}><AppointmentsModule currentUser={user} appointments={appointments} prescriptions={prescriptions} labOrders={labOrders} invoices={invoices} onOpenBookingModal={() => setIsBookingModalOpen(true)} onApproveWebRequest={handleApproveWebRequest} onOpenEditApt={(apt) => setEditingApt(apt)} onDeleteApt={handleDeleteAppointment} onCheckIn={handleCheckInPatient} onComplete={handleCompleteApt} getDynamicStatus={getDynamicStatus} initialSyncPending={initialSyncPending} /></RoleGuard>} />          
          <Route path="/prescriptions" element={<RoleGuard user={user} allowedRoles={['admin', 'doctor', 'pharmacist']}><PrescriptionsModule currentUser={user} patients={patients} appointments={appointments} prescriptions={prescriptions} getDynamicStatus={getDynamicStatus} onSavePrescription={handleSavePrescription} onDischarge={handleDischargePatient} /></RoleGuard>} />          
           <Route path="/lab-results" element={<RoleGuard user={user} allowedRoles={['admin', 'doctor']}><DoctorLabResults patients={patients} labReports={labReports} /></RoleGuard>} />
           <Route path="/pharmacy" element={<RoleGuard user={user} allowedRoles={['admin', 'pharmacist']}><PharmacyModule prescriptions={prescriptions} inventory={inventory} invoices={invoices} onOpenStockModal={() => setIsStockModalOpen(true)} onOpenFulfillModal={(rx) => setFulfillRx(rx)} onOpenEditStockModal={(item) => setEditingStock(item)} /></RoleGuard>} />

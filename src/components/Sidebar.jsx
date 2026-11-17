@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 const navigation = [
-  { label: 'Overview', to: '/admin-dashboard', icon: LayoutDashboard, roles: ['admin', 'receptionist'] },
+  { label: 'Overview', to: '/admin-dashboard', icon: LayoutDashboard, roles: ['admin', 'doctor', 'receptionist'] },
   { label: 'Patients', to: '/patients', icon: Users, roles: ['admin', 'doctor', 'receptionist', 'laboratorist', 'billing', 'pharmacist'] },
   { label: 'Appointments', to: '/appointments', icon: CalendarDays, roles: ['admin', 'doctor', 'receptionist'] },
   { label: 'Prescriptions', to: '/prescriptions', icon: ClipboardList, roles: ['admin', 'doctor', 'pharmacist'] },
@@ -23,7 +23,8 @@ export default function Sidebar({ user, isOpen = false, onClose, patientCount = 
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installing, setInstalling] = useState(false);
   const role = (user?.role || '').toLowerCase();
-  const items = navigation.filter(item => item.roles.includes(role));
+  const dashboardPath = role === 'doctor' ? '/doctor-dashboard' : role === 'receptionist' ? '/reception-dashboard' : '/admin-dashboard';
+  const items = navigation.filter(item => item.roles.includes(role)).map(item => item.label === 'Overview' ? { ...item, to: dashboardPath } : item);
   const initials = (user?.username || user?.name || 'User').split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase();
 
   useEffect(() => {
